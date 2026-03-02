@@ -4,15 +4,20 @@
 mode: union
 
 # Column(s) that must be unique after combination (validated; script fails if duplicates)
+# For fact tables with multiple snapshots per task, use a composite key
 primary_key:
   - taskid
+  - dateended
 
 # Dedupe strategy when duplicates exist (applied before validation):
 #   - "keep_last": Keep the last occurrence of each primary key (sorted by sort_by column)
 #   - "keep_first": Keep the first occurrence of each primary key (sorted by sort_by column)
 #   - "none" or omit: Fail on duplicates (default)
-dedupe_strategy: keep_last
-sort_by: dateended  # Column to sort by before deduping (newest last)
+dedupe_strategy: none  # Composite key should be unique; fail if not
+
+# Add a surrogate primary key for SQLite (auto-increment row_id)
+add_surrogate_key: true
+surrogate_key_name: row_id
 
 # Output filename under analytics/
 output: combined.parquet

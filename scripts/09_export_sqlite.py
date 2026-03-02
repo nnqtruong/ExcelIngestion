@@ -42,13 +42,23 @@ def get_combined_path() -> Path:
     return ANALYTICS_DIR / "combined.parquet"
 
 
-def get_sqlite_dtype(col_name: str, pandas_dtype: str) -> str:
+def get_surrogate_key_name() -> str | None:
+    """Get surrogate key name from combine.yaml if configured."""
+    if COMBINE_PATH.exists():
+        with open(COMBINE_PATH, encoding="utf-8") as f:
+            config = yaml.safe_load(f)
+        if config and config.get("add_surrogate_key"):
+            return config.get("surrogate_key_name", "row_id")
+    return None
+
+
+def get_sqlite_dtype(col_name: str, pandas_dtype: str, surrogate_key: str | None) -> str:
     """Map column to SQLite type based on name and pandas dtype."""
-    # Primary key
-    if col_name == "taskid":
+    # Surrogate primary key (if configured)
+    if surrogate_key and col_name == surrogate_key:
         return "INTEGER PRIMARY KEY"
     # Integer columns
-    if col_name == "filenumber":
+    if col_name in ("taskid", "filenumber"):
         return "INTEGER"
     # Date/time columns -> TEXT (ISO 8601 format)
     if "date" in col_name or "time" in col_name:
@@ -71,12 +81,14 @@ def prepare_dataframe_for_sqlite(df: pd.DataFrame) -> pd.DataFrame:
 def create_indexes(conn: sqlite3.Connection, log: logging.Logger) -> None:
     """Create indexes on frequently queried columns."""
     indexes = [
+        ("idx_tasks_taskid", "taskid"),  # Index on taskid for fast lookups
         ("idx_tasks_status", "taskstatus"),
         ("idx_tasks_drawer", "drawer"),
         ("idx_tasks_carrier", "carrier"),
         ("idx_tasks_flowname", "flowname"),
         ("idx_tasks_effectivedate", "effectivedate"),
         ("idx_tasks_dateinitiated", "dateinitiated"),
+        ("idx_tasks_dateended", "dateended"),  # For time-based queries
     ]
     cursor = conn.cursor()
     for idx_name, col_name in indexes:

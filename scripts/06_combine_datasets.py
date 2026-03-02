@@ -166,6 +166,18 @@ def run_join(files: list[Path], config: dict, log: logging.Logger) -> pd.DataFra
     return df
 
 
+def add_surrogate_key(
+    df: pd.DataFrame,
+    key_name: str,
+    log: logging.Logger,
+) -> pd.DataFrame:
+    """Add a surrogate primary key column (1-based integer)."""
+    df = df.copy()
+    df.insert(0, key_name, range(1, len(df) + 1))
+    log.info("Added surrogate key '%s' (1 to %d)", key_name, len(df))
+    return df
+
+
 def main() -> None:
     setup_logging()
     log = logging.getLogger(__name__)
@@ -179,6 +191,10 @@ def main() -> None:
     # Dedupe settings
     dedupe_strategy = (config.get("dedupe_strategy") or "none").strip().lower()
     sort_by = config.get("sort_by")
+
+    # Surrogate key settings
+    should_add_surrogate = config.get("add_surrogate_key", False)
+    surrogate_key_name = config.get("surrogate_key_name", "row_id")
 
     if not CLEAN_DIR.is_dir():
         log.error("No clean/ directory at %s", CLEAN_DIR)
@@ -200,6 +216,10 @@ def main() -> None:
     combined = deduplicate(combined, primary_key, dedupe_strategy, sort_by, log)
 
     validate_no_duplicate_primary_key(combined, primary_key)
+
+    # Add surrogate key if configured
+    if should_add_surrogate:
+        combined = add_surrogate_key(combined, surrogate_key_name, log)
 
     ANALYTICS_DIR.mkdir(parents=True, exist_ok=True)
     combined.to_parquet(output_path, index=False)
