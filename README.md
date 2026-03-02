@@ -1,6 +1,6 @@
 # Excel Ingestion Pipeline
 
-An 8-step data pipeline that converts Excel files into clean, validated Parquet datasets. Handles schema normalization, missing columns, type casting, value standardization, and combines multiple source files into a single analytics-ready output.
+A 10-step data pipeline that converts Excel files into clean, validated Parquet datasets and a SQLite database. Handles schema normalization, missing columns, type casting, value standardization, combines multiple source files into a single analytics-ready output, and exports to SQLite with pre-built analytics views.
 
 ## Project Structure
 
@@ -8,7 +8,7 @@ An 8-step data pipeline that converts Excel files into clean, validated Parquet 
 ExcelIngestion/
 ├── raw/                    # Input Excel files (.xlsx) - drop source files here
 ├── clean/                  # Intermediate Parquet files after per-file processing
-├── analytics/              # Final combined output (combined.parquet)
+├── analytics/              # Final combined output (combined.parquet, tasks.db)
 ├── logs/                   # Pipeline logs and validation reports
 │   ├── pipeline.log        # Timestamped log of all pipeline steps
 │   └── validation_report.json  # Final validation results (pass/fail per check)
@@ -24,12 +24,14 @@ ExcelIngestion/
 │   ├── 05_normalize_values.py  # Apply value_maps.yaml transformations
 │   ├── 06_combine_datasets.py  # Union all files, validate primary key
 │   ├── 07_handle_nulls.py  # Apply fill strategies from schema
-│   └── 08_validate.py      # Final gate: row count, nulls, dtypes, duplicates
+│   ├── 08_validate.py      # Final gate: row count, nulls, dtypes, duplicates
+│   ├── 09_export_sqlite.py # Export to SQLite database with indexes
+│   └── 10_sqlite_views.py  # Create analytics views in SQLite
 ├── tests/
 │   ├── test_pipeline.py    # Pytest test suite
 │   ├── create_fixtures.py  # Generate 12 test Excel files
 │   └── fixtures/           # Sample Excel files for testing
-├── run_pipeline.py         # Orchestrator script (runs steps 01-08)
+├── run_pipeline.py         # Orchestrator script (runs steps 01-10)
 └── requirements.txt        # Python dependencies
 ```
 
@@ -58,8 +60,11 @@ python tests/create_fixtures.py
 python run_pipeline.py
 
 # Check output
-ls analytics/       # Should contain combined.parquet
+ls analytics/       # Should contain combined.parquet and tasks.db
 ls logs/           # pipeline.log and validation_report.json
+
+# Query the SQLite database
+sqlite3 analytics/tasks.db "SELECT COUNT(*) FROM tasks;"
 ```
 
 ## Pipeline Steps
@@ -119,6 +124,20 @@ Final validation gate. Checks row count, required columns, duplicate rate on pri
 **Reads:** `analytics/combined.parquet`, `config/schema.yaml`, `config/combine.yaml`
 **Outputs:** `logs/validation_report.json`
 **Logs:** Pass/fail per check, detailed failure reasons
+
+### Step 09: Export SQLite (`09_export_sqlite.py`)
+Exports the combined Parquet file to a SQLite database for portable analytics. Creates indexes on frequently queried columns and runs verification queries to confirm data integrity.
+
+**Reads:** `analytics/combined.parquet`
+**Outputs:** `analytics/tasks.db`
+**Logs:** Row counts, unique task counts, status/flow breakdowns
+
+### Step 10: SQLite Views (`10_sqlite_views.py`)
+Creates SQL views in the SQLite database for common analytics queries. Views provide pre-computed metrics like task duration, daily volume, drawer performance, and carrier workload.
+
+**Reads:** `analytics/tasks.db`
+**Outputs:** Creates 5 views in `analytics/tasks.db`
+**Logs:** View creation confirmations, row counts per view
 
 ## Configuration
 
@@ -250,6 +269,80 @@ The pipeline is idempotent—rerunning it will reprocess all files from scratch.
 3. Combined output has ~53% null rate for `taskstatus` (expected for 6/12 files missing it)
 
 If future source files include TaskStatus, the null rate will naturally decrease.
+
+## SQLite Database
+
+The pipeline exports data to a portable SQLite database at `analytics/tasks.db`. No server required—query directly from the command line, Python, or any SQLite client (DBeaver, DB Browser, etc.).
+
+### Querying from Command Line
+
+```bash
+# Open the database
+sqlite3 analytics/tasks.db
+
+# Basic queries
+SELECT COUNT(*) FROM tasks;
+SELECT taskstatus, COUNT(*) FROM tasks GROUP BY taskstatus;
+SELECT drawer, COUNT(*) FROM tasks GROUP BY drawer ORDER BY COUNT(*) DESC;
+
+# Use a view
+SELECT * FROM v_drawer_summary;
+
+# List all tables and views
+.tables
+
+# Exit
+.quit
+```
+
+### Querying from Python
+
+```python
+import sqlite3
+import pandas as pd
+
+# Connect to database
+conn = sqlite3.connect('analytics/tasks.db')
+
+# Query into DataFrame
+df = pd.read_sql_query("SELECT * FROM tasks WHERE taskstatus = 'Completed'", conn)
+
+# Use a view
+summary = pd.read_sql_query("SELECT * FROM v_drawer_summary", conn)
+
+conn.close()
+```
+
+### Available Views
+
+| View | Description |
+|------|-------------|
+| `v_task_duration` | Tasks with calculated `duration_hours` and `total_lifecycle_hours` |
+| `v_daily_volume` | Daily count of tasks initiated and completed |
+| `v_drawer_summary` | Per-drawer totals, completion counts, and average duration |
+| `v_carrier_workload` | Per-carrier/flowname task counts by status |
+| `v_missing_status` | Tasks with NULL taskstatus (from files 07-12) |
+
+### Indexes
+
+The database includes indexes for fast filtering on:
+- `taskstatus`
+- `drawer`
+- `carrier`
+- `flowname`
+- `effectivedate`
+- `dateinitiated`
+
+### Column Types in SQLite
+
+| Column | SQLite Type |
+|--------|-------------|
+| `taskid` | INTEGER PRIMARY KEY |
+| `filenumber` | INTEGER |
+| `*date*`, `*time*` columns | TEXT (ISO 8601 format) |
+| All others | TEXT |
+
+Datetime columns are stored as ISO 8601 strings (`YYYY-MM-DD HH:MM:SS`) so SQLite can sort and compare them correctly.
 
 ## Troubleshooting
 

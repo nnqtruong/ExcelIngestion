@@ -1,5 +1,6 @@
 """Pipeline tests - run with: pytest tests/ -v"""
 import pandas as pd
+import sqlite3
 import yaml
 import pytest
 from pathlib import Path
@@ -7,6 +8,8 @@ from pathlib import Path
 ROOT = Path(__file__).parent.parent
 CONFIG = ROOT / "config"
 FIXTURES = Path(__file__).parent / "fixtures"
+ANALYTICS = ROOT / "analytics"
+DB_PATH = ANALYTICS / "tasks.db"
 
 
 @pytest.fixture
@@ -163,3 +166,92 @@ class TestValidation:
         renamed = clean_df.rename(columns=str.lower)
         expected = set(schema["column_order"])
         assert set(renamed.columns) == expected
+
+
+# ---- Steps 09-10: SQLite Export ----
+
+class TestSQLiteExport:
+    @pytest.fixture
+    def db_conn(self):
+        """Fixture to provide SQLite connection if database exists."""
+        if not DB_PATH.exists():
+            pytest.skip("SQLite database not found - run pipeline first")
+        conn = sqlite3.connect(DB_PATH)
+        yield conn
+        conn.close()
+
+    @pytest.fixture
+    def parquet_df(self):
+        """Fixture to load combined parquet if it exists."""
+        parquet_path = ANALYTICS / "combined.parquet"
+        if not parquet_path.exists():
+            pytest.skip("Combined parquet not found - run pipeline first")
+        return pd.read_parquet(parquet_path)
+
+    def test_db_exists(self):
+        """Test that analytics/tasks.db is created."""
+        assert DB_PATH.exists(), f"SQLite database not found at {DB_PATH}"
+
+    def test_row_count_matches_parquet(self, db_conn, parquet_df):
+        """Test that SQLite row count equals Parquet row count."""
+        cursor = db_conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM tasks")
+        sqlite_count = cursor.fetchone()[0]
+        parquet_count = len(parquet_df)
+        assert sqlite_count == parquet_count, f"SQLite has {sqlite_count} rows, Parquet has {parquet_count}"
+
+    def test_primary_key_unique(self, db_conn):
+        """Test that no duplicate taskid in SQLite."""
+        cursor = db_conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM tasks")
+        total = cursor.fetchone()[0]
+        cursor.execute("SELECT COUNT(DISTINCT taskid) FROM tasks")
+        unique = cursor.fetchone()[0]
+        assert total == unique, f"Duplicate taskids found: {total} total, {unique} unique"
+
+    def test_indexes_exist(self, db_conn):
+        """Test that all 6 indexes are present."""
+        expected_indexes = [
+            "idx_tasks_status",
+            "idx_tasks_drawer",
+            "idx_tasks_carrier",
+            "idx_tasks_flowname",
+            "idx_tasks_effectivedate",
+            "idx_tasks_dateinitiated",
+        ]
+        cursor = db_conn.cursor()
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='tasks'")
+        actual_indexes = {row[0] for row in cursor.fetchall()}
+        for idx in expected_indexes:
+            assert idx in actual_indexes, f"Index {idx} not found"
+
+    def test_views_exist(self, db_conn):
+        """Test that all 5 views are queryable."""
+        expected_views = [
+            "v_task_duration",
+            "v_daily_volume",
+            "v_drawer_summary",
+            "v_carrier_workload",
+            "v_missing_status",
+        ]
+        cursor = db_conn.cursor()
+        for view in expected_views:
+            try:
+                cursor.execute(f"SELECT COUNT(*) FROM {view}")
+                cursor.fetchone()
+            except sqlite3.Error as e:
+                pytest.fail(f"View {view} not queryable: {e}")
+
+    def test_duration_view_returns_data(self, db_conn):
+        """Test that v_task_duration returns rows with non-null duration_hours."""
+        cursor = db_conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM v_task_duration WHERE duration_hours IS NOT NULL")
+        count = cursor.fetchone()[0]
+        assert count > 0, "v_task_duration should have rows with non-null duration_hours"
+
+    def test_null_status_view(self, db_conn):
+        """Test that v_missing_status returns rows (from files 07-12)."""
+        cursor = db_conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM v_missing_status")
+        count = cursor.fetchone()[0]
+        assert count > 0, "v_missing_status should have rows (files 07-12 lack TaskStatus)"

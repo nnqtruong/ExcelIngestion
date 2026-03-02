@@ -1,4 +1,4 @@
-"""Orchestrator: run steps 01–08 in sequence. Supports --dry-run and --from-step N."""
+"""Orchestrator: run steps 01–10 in sequence. Supports --dry-run and --from-step N."""
 
 import argparse
 import logging
@@ -23,6 +23,8 @@ STEPS = [
     (6, "06_combine_datasets", SCRIPTS_DIR / "06_combine_datasets.py"),
     (7, "07_handle_nulls", SCRIPTS_DIR / "07_handle_nulls.py"),
     (8, "08_validate", SCRIPTS_DIR / "08_validate.py"),
+    (9, "09_export_sqlite", SCRIPTS_DIR / "09_export_sqlite.py"),
+    (10, "10_sqlite_views", SCRIPTS_DIR / "10_sqlite_views.py"),
 ]
 
 
@@ -129,7 +131,7 @@ def run_step(step_num: int, name: str, script_path: Path, log: logging.Logger) -
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Run pipeline steps 01–08 in sequence.")
+    parser = argparse.ArgumentParser(description="Run pipeline steps 01–10 in sequence.")
     parser.add_argument(
         "--dry-run",
         action="store_true",
@@ -140,7 +142,7 @@ def main() -> int:
         type=int,
         default=1,
         metavar="N",
-        help="Start from step N (1–8). Default: 1.",
+        help="Start from step N (1–10). Default: 1.",
     )
     args = parser.parse_args()
 
@@ -150,13 +152,13 @@ def main() -> int:
         log.info("Dry run: validating config and inputs (no writes).")
         if not dry_run_validate(log):
             return 1
-        log.info("Dry run: would execute steps %d-8: %s",
+        log.info("Dry run: would execute steps %d-10: %s",
                  args.from_step,
                  ", ".join(name for n, name, _ in STEPS if n >= args.from_step))
         return 0
 
-    if not (1 <= args.from_step <= 8):
-        log.error("--from-step must be between 1 and 8, got %d", args.from_step)
+    if not (1 <= args.from_step <= 10):
+        log.error("--from-step must be between 1 and 10, got %d", args.from_step)
         return 1
 
     steps_to_run = [(n, name, path) for n, name, path in STEPS if n >= args.from_step]
