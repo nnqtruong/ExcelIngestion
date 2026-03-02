@@ -12,6 +12,7 @@ import yaml
 ROOT = Path(__file__).resolve().parent.parent
 CONFIG_DIR = ROOT / "config"
 CLEAN_DIR = ROOT / "clean"
+ERRORS_DIR = ROOT / "errors"
 LOGS_DIR = ROOT / "logs"
 SCHEMA_PATH = CONFIG_DIR / "schema.yaml"
 
@@ -114,7 +115,7 @@ def _columns_as_list(schema: dict) -> list[dict]:
 
 def process_file(path: Path, schema: dict, log: logging.Logger) -> None:
     """
-    Cast schema columns to expected types; put failing rows in path_stem_errors.parquet.
+    Cast schema columns to expected types; put failing rows in errors/{filename}_errors.parquet.
     Log error count per column.
     """
     df = pd.read_parquet(path)
@@ -147,19 +148,20 @@ def process_file(path: Path, schema: dict, log: logging.Logger) -> None:
     if n_error_rows == 0:
         # All rows passed; write casted df and remove sidecar if present
         casted.to_parquet(path, index=False)
-        sidecar = path.parent / f"{path.stem}_errors.parquet"
-        if sidecar.exists():
-            sidecar.unlink()
-            log.info("%s: removed empty sidecar %s", path.name, sidecar.name)
+        error_file = ERRORS_DIR / f"{path.stem}_errors.parquet"
+        if error_file.exists():
+            error_file.unlink()
+            log.info("%s: removed empty error file %s", path.name, error_file.name)
         return
 
     good = casted.loc[~row_has_error]
     bad = df.loc[row_has_error].copy()  # Keep original values for inspection
 
     good.to_parquet(path, index=False)
-    sidecar = path.parent / f"{path.stem}_errors.parquet"
-    bad.to_parquet(sidecar, index=False)
-    log.info("%s: %d row(s) flagged to %s", path.name, n_error_rows, sidecar.name)
+    ERRORS_DIR.mkdir(parents=True, exist_ok=True)
+    error_file = ERRORS_DIR / f"{path.stem}_errors.parquet"
+    bad.to_parquet(error_file, index=False)
+    log.info("%s: %d row(s) flagged to errors/%s", path.name, n_error_rows, error_file.name)
 
 
 def main() -> None:

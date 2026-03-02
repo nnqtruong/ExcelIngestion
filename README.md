@@ -8,6 +8,7 @@ A 10-step data pipeline that converts Excel files into clean, validated Parquet 
 ExcelIngestion/
 ├── raw/                    # Input Excel files (.xlsx) - drop source files here
 ├── clean/                  # Intermediate Parquet files after per-file processing
+├── errors/                 # Rows that failed type casting (for inspection)
 ├── analytics/              # Final combined output (combined.parquet, tasks.db)
 ├── logs/                   # Pipeline logs and validation reports
 │   ├── pipeline.log        # Timestamped log of all pipeline steps
@@ -20,7 +21,7 @@ ExcelIngestion/
 │   ├── 01_convert.py       # Excel → Parquet
 │   ├── 02_normalize_schema.py  # Lowercase snake_case column names
 │   ├── 03_add_missing_columns.py  # Add schema columns that are missing
-│   ├── 04_clean_errors.py  # Cast types, flag bad rows to _errors.parquet
+│   ├── 04_clean_errors.py  # Cast types, flag bad rows to errors/
 │   ├── 05_normalize_values.py  # Apply value_maps.yaml transformations
 │   ├── 06_combine_datasets.py  # Union all files, validate primary key
 │   ├── 07_handle_nulls.py  # Apply fill strategies from schema
