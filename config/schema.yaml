@@ -1,0 +1,131 @@
+# Analytics Cleaning Manifesto - Schema Definition
+# All files must conform to this schema after normalization
+
+columns:
+  taskid:
+    dtype: int64
+    nullable: false
+    primary_key: true
+
+  drawer:
+    dtype: string
+    nullable: false
+
+  policynumber:
+    dtype: string
+    nullable: false
+
+  filename:
+    dtype: string
+    nullable: true
+
+  filenumber:
+    dtype: int64
+    nullable: false
+
+  effectivedate:
+    dtype: datetime64
+    nullable: false
+
+  carrier:
+    dtype: string
+    nullable: false
+
+  acctexec:
+    dtype: string
+    nullable: true
+
+  taskdescription:
+    dtype: string
+    nullable: true
+
+  assignedto:
+    dtype: string
+    nullable: true
+
+  taskfrom:
+    dtype: string
+    nullable: true
+
+  operationby:
+    dtype: string
+    nullable: true
+
+  flowname:
+    dtype: string
+    nullable: true
+    allowed_values:
+      - "UW Renewal"
+      - "UW New Business"
+      - "Brokerage Support Processing"
+
+  stepname:
+    dtype: string
+    nullable: true
+
+  sentto:
+    dtype: string
+    nullable: true
+
+  dateavailable:
+    dtype: datetime64
+    nullable: true
+    fill_strategy: null  # no fill - missing means not yet available
+
+  dateinitiated:
+    dtype: datetime64
+    nullable: true
+
+  dateended:
+    dtype: datetime64
+    nullable: true
+    fill_strategy: null  # no fill - missing means still open
+
+  taskstatus:
+    dtype: string
+    nullable: true  # Some source files are missing this column entirely
+    max_null_rate: 0.60  # Allow higher null rate since 6 of 12 source files lack this column
+    allowed_values:
+      - "Completed"
+      - "In Progress"
+      - "Pending"
+      - "Cancelled"
+
+  starttime:
+    dtype: datetime64
+    nullable: true
+
+  endtime:
+    dtype: datetime64
+    nullable: true
+    fill_strategy: null  # no fill - missing means still running
+
+# Validation thresholds
+validation:
+  max_null_rate: 0.30          # fail if any column > 30% null
+  max_duplicate_rate: 0.01     # fail if > 1% duplicate primary keys
+  min_row_count: 1             # fail if empty after cleaning
+
+# Column order matters - output files follow this order
+column_order:
+  - taskid
+  - drawer
+  - policynumber
+  - filename
+  - filenumber
+  - effectivedate
+  - carrier
+  - acctexec
+  - taskdescription
+  - assignedto
+  - taskfrom
+  - operationby
+  - flowname
+  - stepname
+  - sentto
+  - dateavailable
+  - dateinitiated
+  - dateended
+  - taskstatus
+  - starttime
+  - endtime

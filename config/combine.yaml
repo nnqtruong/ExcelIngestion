@@ -1,0 +1,19 @@
+# How to combine cleaned Parquet files. Output written to analytics/.
+
+# Mode: "union" (concat all) or "join" (merge on key)
+mode: union
+
+# Column(s) that must be unique after combination (validated; script fails if duplicates)
+primary_key:
+  - taskid
+
+# Output filename under analytics/
+output: combined.parquet
+
+# Optional: subset and order of files in clean/ (default: all *.parquet, excluding *_errors)
+# files:
+#   - a.parquet
+#   - b.parquet
+
+# For mode: join — column(s) to merge on (same name in both)
+# join_on: id

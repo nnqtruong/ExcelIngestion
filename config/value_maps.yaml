@@ -1,0 +1,32 @@
+# Standardization mappings applied in 05_normalize_values.py
+# Format: column_name -> { raw_value: clean_value }
+
+taskstatus:
+  "completed": "Completed"
+  "COMPLETED": "Completed"
+  "complete": "Completed"
+  "in progress": "In Progress"
+  "IN PROGRESS": "In Progress"
+  "inprogress": "In Progress"
+  "pending": "Pending"
+  "PENDING": "Pending"
+  "cancelled": "Cancelled"
+  "CANCELLED": "Cancelled"
+  "canceled": "Cancelled"
+
+flowname:
+  "uw renewal": "UW Renewal"
+  "UW RENEWAL": "UW Renewal"
+  "uw new business": "UW New Business"
+  "UW NEW BUSINESS": "UW New Business"
+  "brokerage support processing": "Brokerage Support Processing"
+
+# Drawer normalization - add as you discover variants
+drawer:
+  "SCU  Bothell": "SCU Bothell"           # double space fix
+  "San Fran TC  Brkg": "San Fran TC Brkg" # double space fix
+  "SCU  Tampa": "SCU Tampa"               # double space fix
+  "SCU  Chicago": "SCU Chicago"           # double space fix
+  "NYC  Brkg": "NYC Brkg"                 # double space fix
+  "SCU  Denver": "SCU Denver"             # double space fix
+  "San  Fran TC Brkg": "San Fran TC Brkg" # double space fix

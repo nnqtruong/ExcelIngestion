@@ -1,0 +1,4 @@
+mode: union
+primary_key:
+  - id
+output: combined.parquet

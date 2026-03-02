@@ -1,0 +1,16 @@
+# Minimal schema for pipeline tests (list format for steps 02-07)
+columns:
+  - name: id
+    dtype: int64
+    nullable: false
+  - name: name
+    dtype: string
+    nullable: false
+  - name: value
+    dtype: float64
+    nullable: true
+
+validation:
+  max_null_rate: 0.5
+  max_duplicate_rate: 0.1
+  min_row_count: 1
