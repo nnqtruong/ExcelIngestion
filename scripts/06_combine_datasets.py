@@ -73,6 +73,59 @@ def validate_no_duplicate_primary_key(df: pd.DataFrame, primary_key: list[str]) 
         )
 
 
+def deduplicate(
+    df: pd.DataFrame,
+    primary_key: list[str],
+    strategy: str,
+    sort_by: str | None,
+    log: logging.Logger,
+) -> pd.DataFrame:
+    """Deduplicate DataFrame based on strategy.
+
+    Args:
+        df: Combined DataFrame
+        primary_key: Column(s) to dedupe on
+        strategy: "keep_last", "keep_first", or "none"
+        sort_by: Column to sort by before deduping
+        log: Logger
+
+    Returns:
+        Deduplicated DataFrame
+    """
+    if strategy == "none" or not strategy:
+        return df
+
+    before_count = len(df)
+    dup_count = df.duplicated(subset=primary_key, keep=False).sum()
+
+    if dup_count == 0:
+        log.info("No duplicates found, skipping dedupe")
+        return df
+
+    log.info("Found %d rows involved in duplicates (strategy: %s)", dup_count, strategy)
+
+    # Sort if sort_by specified
+    if sort_by and sort_by in df.columns:
+        df = df.sort_values(by=sort_by, na_position="first")
+        log.info("Sorted by %s before deduplication", sort_by)
+    elif sort_by:
+        log.warning("sort_by column '%s' not found, using file order", sort_by)
+
+    # Apply keep strategy
+    if strategy == "keep_last":
+        df = df.drop_duplicates(subset=primary_key, keep="last")
+    elif strategy == "keep_first":
+        df = df.drop_duplicates(subset=primary_key, keep="first")
+    else:
+        raise ValueError(f"Unknown dedupe_strategy: {strategy}")
+
+    after_count = len(df)
+    removed = before_count - after_count
+    log.info("Deduplicated: %d -> %d rows (%d removed)", before_count, after_count, removed)
+
+    return df
+
+
 def run_union(files: list[Path], config: dict, log: logging.Logger) -> pd.DataFrame:
     """Concat all files; return combined DataFrame. Log row count per file and total before."""
     if not files:
@@ -123,6 +176,10 @@ def main() -> None:
     output_name = config.get("output") or "combined.parquet"
     output_path = ANALYTICS_DIR / output_name
 
+    # Dedupe settings
+    dedupe_strategy = (config.get("dedupe_strategy") or "none").strip().lower()
+    sort_by = config.get("sort_by")
+
     if not CLEAN_DIR.is_dir():
         log.error("No clean/ directory at %s", CLEAN_DIR)
         sys.exit(1)
@@ -138,6 +195,9 @@ def main() -> None:
         combined = run_join(files, config, log)
     else:
         raise ValueError(f"combine.yaml mode must be 'union' or 'join', got: {mode}")
+
+    # Deduplicate before validation (if strategy specified)
+    combined = deduplicate(combined, primary_key, dedupe_strategy, sort_by, log)
 
     validate_no_duplicate_primary_key(combined, primary_key)
 

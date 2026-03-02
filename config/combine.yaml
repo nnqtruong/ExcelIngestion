@@ -7,6 +7,13 @@ mode: union
 primary_key:
   - taskid
 
+# Dedupe strategy when duplicates exist (applied before validation):
+#   - "keep_last": Keep the last occurrence of each primary key (sorted by sort_by column)
+#   - "keep_first": Keep the first occurrence of each primary key (sorted by sort_by column)
+#   - "none" or omit: Fail on duplicates (default)
+dedupe_strategy: keep_last
+sort_by: dateended  # Column to sort by before deduping (newest last)
+
 # Output filename under analytics/
 output: combined.parquet
 
