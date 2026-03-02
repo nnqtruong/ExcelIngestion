@@ -133,8 +133,15 @@ def export_to_sqlite(parquet_path: Path, db_path: Path, log: logging.Logger) -> 
 
     # Remove existing database
     if db_path.exists():
-        db_path.unlink()
-        log.info("Removed existing database: %s", db_path.name)
+        try:
+            db_path.unlink()
+            log.info("Removed existing database: %s", db_path.name)
+        except PermissionError:
+            log.error(
+                "Cannot delete %s - file is locked. Close any applications using the database.",
+                db_path.name,
+            )
+            sys.exit(1)
 
     # Create connection
     conn = sqlite3.connect(db_path)

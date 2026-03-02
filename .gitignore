@@ -27,3 +27,9 @@ build/
 # OS
 .DS_Store
 Thumbs.db
+
+# Windows reserved names (invalid path for Git)
+nul
+con
+prn
+aux

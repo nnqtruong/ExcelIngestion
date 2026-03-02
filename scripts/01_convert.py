@@ -3,7 +3,24 @@
 import sys
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
+
+
+def coerce_mixed_types(df: pd.DataFrame) -> pd.DataFrame:
+    """Convert object-dtype columns to string to avoid PyArrow mixed-type errors.
+
+    Excel files often have columns with mixed types (e.g., PolicyNumber with both
+    strings like 'NPP1234567' and integers like 1234567). PyArrow cannot convert
+    these to Parquet, so we coerce them to strings first.
+    """
+    for col in df.columns:
+        if df[col].dtype == "object":
+            # Convert to string, but preserve actual NaN/None as pd.NA
+            df[col] = df[col].apply(
+                lambda x: str(x) if pd.notna(x) and x is not None else pd.NA
+            )
+    return df
 
 # Project root (parent of scripts/)
 ROOT = Path(__file__).resolve().parent.parent
@@ -34,6 +51,10 @@ def main() -> None:
         except Exception as e:
             print(f"Failed to read {path.name}: {e}", file=sys.stderr)
             sys.exit(1)
+
+        # Coerce object columns to string to avoid PyArrow mixed-type errors
+        df = coerce_mixed_types(df)
+
         out_path = CLEAN_DIR / f"{path.stem}.parquet"
         df.to_parquet(out_path, index=False)
         print(f"Converted {path.name} -> {out_path.name}")

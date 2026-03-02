@@ -2,7 +2,10 @@
   "permissions": {
     "allow": [
       "Bash(\".venv\\Scripts\\python.exe\":*)",
-      "Bash(.venvScriptspip.exe freeze)"
+      "Bash(.venvScriptspip.exe freeze)",
+      "Bash(if exist \"analytics\\tasks.db\" del /f \"analytics\\tasks.db\")",
+      "Bash(\"c:/Users/quang/CRC Code/ExcelIngestion/.venv/Scripts/python.exe\":*)",
+      "Bash(\"c:/Users/quang/CRC Code/ExcelIngestion/.venv/Scripts/python.exe\" -m pytest \"c:/Users/quang/CRC Code/ExcelIngestion/tests\" -v -k \"not SQLite\")"
     ],
     "deny": [],
     "ask": []
