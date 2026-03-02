@@ -6,7 +6,13 @@
       "Bash(if exist \"analytics\\tasks.db\" del /f \"analytics\\tasks.db\")",
       "Bash(\"c:/Users/quang/CRC Code/ExcelIngestion/.venv/Scripts/python.exe\":*)",
       "Bash(\"c:/Users/quang/CRC Code/ExcelIngestion/.venv/Scripts/python.exe\" -m pytest \"c:/Users/quang/CRC Code/ExcelIngestion/tests\" -v -k \"not SQLite\")",
-      "Bash(\"c:/Users/quang/CRC Code/ExcelIngestion/.venv/Scripts/python.exe\" \"c:/Users/quang/CRC Code/ExcelIngestion/scripts/06_combine_datasets.py\")"
+      "Bash(\"c:/Users/quang/CRC Code/ExcelIngestion/.venv/Scripts/python.exe\" \"c:/Users/quang/CRC Code/ExcelIngestion/scripts/06_combine_datasets.py\")",
+      "Bash(\"c:/Users/quang/CRC Code/ExcelIngestion/.venv/Scripts/python.exe\" \"c:/Users/quang/CRC Code/ExcelIngestion/run_pipeline.py\" --from-step 6)",
+      "Bash(\"c:/Users/quang/CRC Code/ExcelIngestion/.venv/Scripts/python.exe\" -c \"import pandas as pd; df = pd.read_parquet(''c:/Users/quang/CRC Code/ExcelIngestion/clean/tasks_batch_01.parquet''); print(list(df.columns))\")",
+      "Bash(if exist \"c:\\Users\\quang\\CRC Code\\ExcelIngestion\\analytics\\tasks.db\" del /f \"c:\\Users\\quang\\CRC Code\\ExcelIngestion\\analytics\\tasks.db\")",
+      "Bash(del /f \"c:\\Users\\quang\\CRC Code\\ExcelIngestion\\analytics\\tasks.db\")",
+      "Bash(\"c:/Users/quang/CRC Code/ExcelIngestion/.venv/Scripts/python.exe\" \"c:/Users/quang/CRC Code/ExcelIngestion/run_pipeline.py\" --start 6 --end 8)",
+      "Bash(\"c:/Users/quang/CRC Code/ExcelIngestion/.venv/Scripts/python.exe\" -c:*)"
     ],
     "deny": [],
     "ask": []

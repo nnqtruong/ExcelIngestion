@@ -1,23 +1,5 @@
-# How to combine cleaned Parquet files. Output written to analytics/.
-
-# Mode: "union" (concat all) or "join" (merge on key)
-mode: union
-
-# Skip primary key validation (set to empty or omit to disable)
-# For fact tables with snapshots across multiple months, duplicates are expected
-skip_pk_validation: true
-
-# Add a surrogate primary key for SQLite (auto-increment row_id)
-add_surrogate_key: true
-surrogate_key_name: row_id
+# Step 06 config: combine cleaned Parquet files into one dataset.
+# Primary key is always row_id (auto-generated 1-based integer).
 
 # Output filename under analytics/
 output: combined.parquet
-
-# Optional: subset and order of files in clean/ (default: all *.parquet, excluding *_errors)
-# files:
-#   - a.parquet
-#   - b.parquet
-
-# For mode: join — column(s) to merge on (same name in both)
-# join_on: id
