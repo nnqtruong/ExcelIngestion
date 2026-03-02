@@ -184,13 +184,11 @@ def main() -> None:
 
     config = load_combine_config(COMBINE_PATH)
     mode = (config.get("mode") or "union").strip().lower()
-    primary_key = get_primary_key(config)
     output_name = config.get("output") or "combined.parquet"
     output_path = ANALYTICS_DIR / output_name
 
-    # Dedupe settings
-    dedupe_strategy = (config.get("dedupe_strategy") or "none").strip().lower()
-    sort_by = config.get("sort_by")
+    # Validation settings
+    skip_pk_validation = config.get("skip_pk_validation", False)
 
     # Surrogate key settings
     should_add_surrogate = config.get("add_surrogate_key", False)
@@ -212,10 +210,14 @@ def main() -> None:
     else:
         raise ValueError(f"combine.yaml mode must be 'union' or 'join', got: {mode}")
 
-    # Deduplicate before validation (if strategy specified)
-    combined = deduplicate(combined, primary_key, dedupe_strategy, sort_by, log)
-
-    validate_no_duplicate_primary_key(combined, primary_key)
+    # Validate primary key uniqueness (unless skipped)
+    if not skip_pk_validation and config.get("primary_key"):
+        primary_key = config["primary_key"]
+        if isinstance(primary_key, str):
+            primary_key = [primary_key]
+        validate_no_duplicate_primary_key(combined, primary_key)
+    else:
+        log.info("Skipping primary key validation (skip_pk_validation=true)")
 
     # Add surrogate key if configured
     if should_add_surrogate:
