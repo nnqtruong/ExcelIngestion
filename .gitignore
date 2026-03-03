@@ -37,3 +37,9 @@ nul
 con
 prn
 aux
+
+
+# Raw data files (Excel inputs)
+datasets/*.xlsx
+datasets/*.xls
+
