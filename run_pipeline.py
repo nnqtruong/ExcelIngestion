@@ -123,12 +123,11 @@ def run_step(
     env = os.environ.copy()
     env["PIPELINE_DATASET_ROOT"] = str(dataset_root)
     try:
+        # Stream output in real-time instead of capturing
         result = subprocess.run(
             [sys.executable, str(script_path)],
             cwd=str(ROOT),
             env=env,
-            capture_output=True,
-            text=True,
             timeout=3600,
         )
     except subprocess.TimeoutExpired:
@@ -139,13 +138,7 @@ def run_step(
         return False
     if result.returncode != 0:
         log.error("Step %d (%s) failed with exit code %d", step_num, name, result.returncode)
-        if result.stdout:
-            log.error("stdout: %s", result.stdout.strip())
-        if result.stderr:
-            log.error("stderr: %s", result.stderr.strip())
         return False
-    if result.stdout:
-        log.debug("stdout: %s", result.stdout.strip())
     return True
 
 

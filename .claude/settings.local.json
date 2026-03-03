@@ -15,7 +15,9 @@
       "Bash(\"c:/Users/quang/CRC Code/ExcelIngestion/.venv/Scripts/python.exe\" -c:*)",
       "Bash(\"c:/Users/quang/CRC Code/ExcelIngestion/.venv/Scripts/python.exe\" -m pytest:*)",
       "Bash(\"c:/Users/quang/CRC Code/ExcelIngestion/.venv/Scripts/python.exe\" -m pytest \"c:/Users/quang/CRC Code/ExcelIngestion/tests\" -v)",
-      "Bash(\"c:/Users/quang/CRC Code/ExcelIngestion/.venv/Scripts/python.exe\" \"c:/Users/quang/CRC Code/ExcelIngestion/run_pipeline.py\" --dry-run)"
+      "Bash(\"c:/Users/quang/CRC Code/ExcelIngestion/.venv/Scripts/python.exe\" \"c:/Users/quang/CRC Code/ExcelIngestion/run_pipeline.py\" --dry-run)",
+      "Bash(\"c:/Users/quang/CRC Code/ExcelIngestion/.venv/Scripts/python.exe\" \"c:/Users/quang/CRC Code/ExcelIngestion/run_pipeline.py\" --from-step 1)",
+      "Bash(PIPELINE_DATASET_ROOT=\"c:/Users/quang/CRC Code/ExcelIngestion/datasets/tasks\" \"c:/Users/quang/CRC Code/ExcelIngestion/.venv/Scripts/python.exe\":*)"
     ],
     "deny": [],
     "ask": []

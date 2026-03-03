@@ -1,9 +1,15 @@
-# Value normalization for dept_mapping (step 05).
-# column_name:
-#   raw_value: clean_value
-# Example:
-# active:
-#   "Y": true
-#   "N": false
-#   "yes": true
-#   "no": false
+# Normalize netwarelogin domain prefix to consistent casing
+netwarelogin:
+  "crc\\": "CRC\\"
+  "Crc\\": "CRC\\"
+
+# Standardize title casing and known variants
+title:
+  "NULL": null
+  "null": null
+  "N/A": null
+  "n/a": null
+  "associate broker": "Associate Broker"
+  "senior broker": "Senior Broker"
+  "inside underwriter": "Inside Underwriter"
+  "broker": "Broker"
