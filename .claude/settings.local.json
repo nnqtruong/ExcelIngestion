@@ -12,7 +12,10 @@
       "Bash(if exist \"c:\\Users\\quang\\CRC Code\\ExcelIngestion\\analytics\\tasks.db\" del /f \"c:\\Users\\quang\\CRC Code\\ExcelIngestion\\analytics\\tasks.db\")",
       "Bash(del /f \"c:\\Users\\quang\\CRC Code\\ExcelIngestion\\analytics\\tasks.db\")",
       "Bash(\"c:/Users/quang/CRC Code/ExcelIngestion/.venv/Scripts/python.exe\" \"c:/Users/quang/CRC Code/ExcelIngestion/run_pipeline.py\" --start 6 --end 8)",
-      "Bash(\"c:/Users/quang/CRC Code/ExcelIngestion/.venv/Scripts/python.exe\" -c:*)"
+      "Bash(\"c:/Users/quang/CRC Code/ExcelIngestion/.venv/Scripts/python.exe\" -c:*)",
+      "Bash(\"c:/Users/quang/CRC Code/ExcelIngestion/.venv/Scripts/python.exe\" -m pytest:*)",
+      "Bash(\"c:/Users/quang/CRC Code/ExcelIngestion/.venv/Scripts/python.exe\" -m pytest \"c:/Users/quang/CRC Code/ExcelIngestion/tests\" -v)",
+      "Bash(\"c:/Users/quang/CRC Code/ExcelIngestion/.venv/Scripts/python.exe\" \"c:/Users/quang/CRC Code/ExcelIngestion/run_pipeline.py\" --dry-run)"
     ],
     "deny": [],
     "ask": []

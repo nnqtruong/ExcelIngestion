@@ -54,9 +54,11 @@ class TestSchemaConfig:
         order_keys = set(schema["column_order"])
         assert col_keys == order_keys, f"Mismatch: {col_keys.symmetric_difference(order_keys)}"
 
-    def test_primary_key_defined(self, schema):
-        pk_cols = [c for c, v in schema["columns"].items() if v.get("primary_key")]
-        assert len(pk_cols) >= 1, "Need at least one primary key"
+    def test_row_id_is_primary_key(self, schema):
+        # row_id is auto-generated in step 6 as the primary key, not defined in schema
+        # Just verify taskid exists and is not nullable (it's still required)
+        assert "taskid" in schema["columns"]
+        assert schema["columns"]["taskid"].get("nullable") is False
 
     def test_validation_thresholds_exist(self, schema):
         assert "validation" in schema
@@ -200,19 +202,19 @@ class TestSQLiteExport:
         parquet_count = len(parquet_df)
         assert sqlite_count == parquet_count, f"SQLite has {sqlite_count} rows, Parquet has {parquet_count}"
 
-    def test_primary_key_unique(self, db_conn):
-        """Test that no duplicate taskid in SQLite."""
+    def test_row_id_unique(self, db_conn):
+        """Test that row_id is unique (auto-generated primary key)."""
         cursor = db_conn.cursor()
         cursor.execute("SELECT COUNT(*) FROM tasks")
         total = cursor.fetchone()[0]
-        cursor.execute("SELECT COUNT(DISTINCT taskid) FROM tasks")
+        cursor.execute("SELECT COUNT(DISTINCT row_id) FROM tasks")
         unique = cursor.fetchone()[0]
-        assert total == unique, f"Duplicate taskids found: {total} total, {unique} unique"
+        assert total == unique, f"Duplicate row_ids found: {total} total, {unique} unique"
 
     def test_indexes_exist(self, db_conn):
-        """Test that all 6 indexes are present."""
+        """Test that key indexes are present."""
         expected_indexes = [
-            "idx_tasks_status",
+            "idx_tasks_taskstatus",
             "idx_tasks_drawer",
             "idx_tasks_carrier",
             "idx_tasks_flowname",

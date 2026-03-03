@@ -1,0 +1,9 @@
+# Value normalization for dept_mapping (step 05).
+# column_name:
+#   raw_value: clean_value
+# Example:
+# active:
+#   "Y": true
+#   "N": false
+#   "yes": true
+#   "no": false

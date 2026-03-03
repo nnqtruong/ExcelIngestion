@@ -1,7 +1,7 @@
-"""Orchestrator: run steps 01–10 in sequence. Supports --dry-run and --from-step N."""
-
+"""Orchestrator: run steps 01–10 in sequence. Reads dataset root from datasets/tasks/pipeline.yaml."""
 import argparse
 import logging
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -10,9 +10,8 @@ import yaml
 
 ROOT = Path(__file__).resolve().parent
 SCRIPTS_DIR = ROOT / "scripts"
-CONFIG_DIR = ROOT / "config"
-ANALYTICS_DIR = ROOT / "analytics"
-LOGS_DIR = ROOT / "logs"
+
+DEFAULT_PIPELINE = "datasets/tasks/pipeline.yaml"
 
 STEPS = [
     (1, "01_convert", SCRIPTS_DIR / "01_convert.py"),
@@ -28,10 +27,18 @@ STEPS = [
 ]
 
 
-def setup_logging() -> logging.Logger:
-    """Configure pipeline orchestrator logging."""
-    LOGS_DIR.mkdir(parents=True, exist_ok=True)
-    log_file = LOGS_DIR / "pipeline.log"
+def get_dataset_root(pipeline_path: Path) -> Path:
+    """Resolve pipeline YAML path; return its parent as dataset root. Raise if file missing."""
+    resolved = pipeline_path.resolve()
+    if not resolved.exists():
+        raise FileNotFoundError(f"Pipeline config not found: {resolved}")
+    return resolved.parent
+
+
+def setup_logging(logs_dir: Path) -> logging.Logger:
+    """Configure pipeline orchestrator logging to logs_dir/pipeline.log."""
+    logs_dir.mkdir(parents=True, exist_ok=True)
+    log_file = logs_dir / "pipeline.log"
     logger = logging.getLogger("run_pipeline")
     logger.setLevel(logging.INFO)
     logger.handlers.clear()
@@ -45,21 +52,22 @@ def setup_logging() -> logging.Logger:
     return logger
 
 
-def get_analytics_output_path() -> Path | None:
-    """Path to combined output in analytics/ (from combine.yaml), or None."""
-    combine_path = CONFIG_DIR / "combine.yaml"
+def get_analytics_output_path(dataset_root: Path) -> Path | None:
+    """Path to combined output in dataset analytics/ (from combine.yaml)."""
+    config_dir = dataset_root / "config"
+    analytics_dir = dataset_root / "analytics"
+    combine_path = config_dir / "combine.yaml"
     if not combine_path.exists():
-        return None
+        return analytics_dir / "combined.parquet"
     with open(combine_path, encoding="utf-8") as f:
         config = yaml.safe_load(f)
-    if config and config.get("output"):
-        return ANALYTICS_DIR / config["output"]
-    return ANALYTICS_DIR / "combined.parquet"
+    output_name = (config or {}).get("output", "combined.parquet")
+    return analytics_dir / output_name
 
 
-def remove_analytics_output(log: logging.Logger) -> None:
-    """Remove combined output from analytics/ so no partial output remains on failure."""
-    path = get_analytics_output_path()
+def remove_analytics_output(dataset_root: Path, log: logging.Logger) -> None:
+    """Remove combined output from dataset analytics/ so no partial output remains on failure."""
+    path = get_analytics_output_path(dataset_root)
     if path and path.exists():
         try:
             path.unlink()
@@ -68,10 +76,14 @@ def remove_analytics_output(log: logging.Logger) -> None:
             log.error("Failed to remove partial output %s: %s", path, e)
 
 
-def dry_run_validate(log: logging.Logger) -> bool:
-    """Validate configs and inputs without writing. Return True if all checks pass."""
+def dry_run_validate(dataset_root: Path, log: logging.Logger) -> bool:
+    """Validate configs and inputs under dataset_root. Return True if all checks pass."""
+    config_dir = dataset_root / "config"
+    raw_dir = dataset_root / "raw"
+    clean_dir = dataset_root / "clean"
     ok = True
-    for path in (CONFIG_DIR / "schema.yaml", CONFIG_DIR / "combine.yaml"):
+    for name in ("schema.yaml", "combine.yaml"):
+        path = config_dir / name
         if not path.exists():
             log.error("Config missing: %s", path)
             ok = False
@@ -82,15 +94,13 @@ def dry_run_validate(log: logging.Logger) -> bool:
             except Exception as e:
                 log.error("Config invalid %s: %s", path, e)
                 ok = False
-    if (CONFIG_DIR / "value_maps.yaml").exists():
+    if (config_dir / "value_maps.yaml").exists():
         try:
-            with open(CONFIG_DIR / "value_maps.yaml", encoding="utf-8") as f:
+            with open(config_dir / "value_maps.yaml", encoding="utf-8") as f:
                 yaml.safe_load(f)
         except Exception as e:
             log.error("Config invalid value_maps.yaml: %s", e)
             ok = False
-    raw_dir = ROOT / "raw"
-    clean_dir = ROOT / "clean"
     if not raw_dir.is_dir():
         log.warning("raw/ not found (step 01 may need it)")
     if not clean_dir.is_dir() and not raw_dir.is_dir():
@@ -98,16 +108,25 @@ def dry_run_validate(log: logging.Logger) -> bool:
     return ok
 
 
-def run_step(step_num: int, name: str, script_path: Path, log: logging.Logger) -> bool:
-    """Run one step via subprocess. Return True if exit code 0."""
+def run_step(
+    step_num: int,
+    name: str,
+    script_path: Path,
+    dataset_root: Path,
+    log: logging.Logger,
+) -> bool:
+    """Run one step via subprocess with PIPELINE_DATASET_ROOT set. Return True if exit code 0."""
     if not script_path.exists():
         log.error("Script not found: %s", script_path)
         return False
     log.info("Running step %d: %s", step_num, name)
+    env = os.environ.copy()
+    env["PIPELINE_DATASET_ROOT"] = str(dataset_root)
     try:
         result = subprocess.run(
             [sys.executable, str(script_path)],
             cwd=str(ROOT),
+            env=env,
             capture_output=True,
             text=True,
             timeout=3600,
@@ -133,6 +152,18 @@ def run_step(step_num: int, name: str, script_path: Path, log: logging.Logger) -
 def main() -> int:
     parser = argparse.ArgumentParser(description="Run pipeline steps 01–10 in sequence.")
     parser.add_argument(
+        "--pipeline",
+        default=None,
+        metavar="PATH",
+        help=f"Path to pipeline.yaml (default if --dataset not set: {DEFAULT_PIPELINE}).",
+    )
+    parser.add_argument(
+        "--dataset",
+        default=None,
+        metavar="NAME",
+        help="Dataset name (e.g. tasks, dept_mapping). Uses datasets/NAME/pipeline.yaml.",
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Validate configs and inputs only; do not run steps or write output.",
@@ -146,11 +177,24 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    log = setup_logging()
+    if args.dataset:
+        pipeline_path = ROOT / "datasets" / args.dataset / "pipeline.yaml"
+    elif args.pipeline:
+        pipeline_path = ROOT / args.pipeline
+    else:
+        pipeline_path = ROOT / DEFAULT_PIPELINE
+    try:
+        dataset_root = get_dataset_root(pipeline_path)
+    except FileNotFoundError as e:
+        print(e, file=sys.stderr)
+        return 1
+
+    logs_dir = dataset_root / "logs"
+    log = setup_logging(logs_dir)
 
     if args.dry_run:
         log.info("Dry run: validating config and inputs (no writes).")
-        if not dry_run_validate(log):
+        if not dry_run_validate(dataset_root, log):
             return 1
         log.info("Dry run: would execute steps %d-10: %s",
                  args.from_step,
@@ -165,11 +209,12 @@ def main() -> int:
     if not steps_to_run:
         return 0
 
+    log.info("Dataset root: %s", dataset_root)
     log.info("Starting pipeline from step %d", args.from_step)
     for step_num, name, script_path in steps_to_run:
-        if not run_step(step_num, name, script_path, log):
+        if not run_step(step_num, name, script_path, dataset_root, log):
             log.error("Pipeline stopped: step %d (%s) failed.", step_num, name)
-            remove_analytics_output(log)
+            remove_analytics_output(dataset_root, log)
             return 1
     log.info("Pipeline completed successfully.")
     return 0

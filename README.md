@@ -1,229 +1,239 @@
 # Excel Ingestion Pipeline
 
-A 10-step data pipeline that converts Excel files into clean, validated Parquet datasets and a SQLite database. Handles schema normalization, missing columns, type casting, value standardization, combines multiple source files into a single analytics-ready output, and exports to SQLite with pre-built analytics views.
+A 10-step data pipeline that converts Excel files into clean, validated Parquet datasets and a SQLite database. Supports multiple datasets with independent schemas and configurations.
 
 ## Project Structure
 
 ```
 ExcelIngestion/
-├── raw/                    # Input Excel files (.xlsx) - drop source files here
-├── clean/                  # Intermediate Parquet files after per-file processing
-├── errors/                 # Rows that failed type casting (for inspection)
-├── analytics/              # Final combined output (combined.parquet, tasks.db)
-├── logs/                   # Pipeline logs and validation reports
-│   ├── pipeline.log        # Timestamped log of all pipeline steps
-│   └── validation_report.json  # Final validation results (pass/fail per check)
-├── config/
-│   ├── schema.yaml         # Target schema: column definitions, types, validation rules
-│   ├── value_maps.yaml     # Value normalization mappings (fix casing, typos)
-│   └── combine.yaml        # How to combine files (union/join, primary key)
-├── scripts/
-│   ├── 01_convert.py       # Excel → Parquet
-│   ├── 02_normalize_schema.py  # Lowercase snake_case column names
-│   ├── 03_add_missing_columns.py  # Add schema columns that are missing
-│   ├── 04_clean_errors.py  # Cast types, flag bad rows to errors/
-│   ├── 05_normalize_values.py  # Apply value_maps.yaml transformations
-│   ├── 06_combine_datasets.py  # Union all files, validate primary key
-│   ├── 07_handle_nulls.py  # Apply fill strategies from schema
-│   ├── 08_validate.py      # Final gate: row count, nulls, dtypes, duplicates
-│   ├── 09_export_sqlite.py # Export to SQLite database with indexes
-│   └── 10_sqlite_views.py  # Create analytics views in SQLite
+├── datasets/                   # Multi-dataset support
+│   ├── tasks/                  # Task tracking dataset
+│   │   ├── pipeline.yaml       # Dataset marker file
+│   │   ├── config/
+│   │   │   ├── schema.yaml     # Column definitions, types, validation
+│   │   │   ├── value_maps.yaml # Value normalization mappings
+│   │   │   └── combine.yaml    # Output filename
+│   │   ├── raw/                # Input Excel files
+│   │   ├── clean/              # Intermediate Parquet files
+│   │   ├── errors/             # Rows that failed type casting
+│   │   ├── analytics/          # Dataset output (combined.parquet)
+│   │   └── logs/               # pipeline.log, validation_report.json
+│   └── dept_mapping/           # Another dataset (same structure)
+├── analytics/                  # Shared SQLite warehouse (project root)
+│   └── warehouse.db            # tasks + employees tables; cross-dataset views
+├── lib/                        # Reusable pipeline functions
+│   ├── convert.py
+│   ├── normalize_schema.py
+│   ├── clean_errors.py
+│   ├── combine_datasets.py
+│   ├── validate.py
+│   ├── export_sqlite.py
+│   └── ...
+├── scripts/                    # Step scripts (thin wrappers around lib/)
+│   ├── 01_convert.py
+│   ├── 02_normalize_schema.py
+│   └── ... (01-10)
 ├── tests/
-│   ├── test_pipeline.py    # Pytest test suite
-│   ├── create_fixtures.py  # Generate 12 test Excel files
-│   └── fixtures/           # Sample Excel files for testing
-├── run_pipeline.py         # Orchestrator script (runs steps 01-10)
-└── requirements.txt        # Python dependencies
+│   ├── test_pipeline.py
+│   └── fixtures/
+├── run_pipeline.py             # Orchestrator (--pipeline flag)
+└── requirements.txt
 ```
 
 ## Quick Start
 
 ```bash
-# Clone and navigate to project
+# Setup
 cd ExcelIngestion
-
-# Create virtual environment
 python -m venv .venv
-
-# Activate venv (Windows)
-.venv\Scripts\activate
-
-# Activate venv (macOS/Linux)
-source .venv/bin/activate
-
-# Install dependencies
+.venv\Scripts\activate          # Windows
+source .venv/bin/activate       # macOS/Linux
 pip install -r requirements.txt
 
-# Generate test fixtures (optional - creates 12 sample Excel files)
-python tests/create_fixtures.py
+# Run the tasks dataset (default)
+python run_pipeline.py
+# Or by name:
+python run_pipeline.py --dataset tasks
 
-# Run the full pipeline
+# Run the employee/department mapping dataset
+python run_pipeline.py --dataset dept_mapping
+
+# Check output (both datasets write to shared warehouse)
+ls analytics/                   # warehouse.db (tasks + employees tables)
+ls datasets/tasks/analytics/    # combined.parquet
+ls datasets/tasks/logs/         # pipeline.log, validation_report.json
+```
+
+## Usage
+
+### Run a Dataset Pipeline
+
+```bash
+# Default: runs datasets/tasks/pipeline.yaml
 python run_pipeline.py
 
-# Check output
-ls analytics/       # Should contain combined.parquet and tasks.db
-ls logs/           # pipeline.log and validation_report.json
+# By dataset name (uses datasets/NAME/pipeline.yaml)
+python run_pipeline.py --dataset tasks
+python run_pipeline.py --dataset dept_mapping
 
-# Query the SQLite database
-sqlite3 analytics/tasks.db "SELECT COUNT(*) FROM tasks;"
+# Explicit path to pipeline.yaml
+python run_pipeline.py --pipeline datasets/tasks/pipeline.yaml
+python run_pipeline.py --pipeline datasets/dept_mapping/pipeline.yaml
+```
+
+Both **tasks** and **dept_mapping** write to a **shared SQLite database** at `analytics/warehouse.db` (see [Shared warehouse](#shared-sqlite-warehouse) below). Each dataset uses its own table (`tasks` and `employees` respectively).
+
+### Pipeline Options
+
+```bash
+# Dry run - validate configs without processing
+python run_pipeline.py --dry-run
+
+# Start from a specific step (1-10)
+python run_pipeline.py --from-step 6
+
+# Combine options
+python run_pipeline.py --pipeline datasets/tasks/pipeline.yaml --from-step 6
+```
+
+### Adding a New Dataset
+
+1. Create the dataset folder structure:
+```bash
+mkdir -p datasets/my_dataset/{config,raw,clean,errors,analytics,logs}
+```
+
+2. Create `datasets/my_dataset/pipeline.yaml`:
+```yaml
+name: my_dataset
+
+# Optional: SQLite export (defaults: database tasks.db, table tasks)
+sqlite:
+  database: warehouse.db   # Use shared warehouse (project analytics/)
+  table: my_table          # Table name in the database
+```
+If `database: warehouse.db`, the table is written to **project** `analytics/warehouse.db`; otherwise to `datasets/my_dataset/analytics/<database>`.
+
+3. Create config files in `datasets/my_dataset/config/`:
+   - `schema.yaml` - Column definitions and validation rules
+   - `combine.yaml` - Output filename
+   - `value_maps.yaml` - Value normalization (optional)
+
+4. Drop Excel files in `datasets/my_dataset/raw/`
+
+5. Run the pipeline:
+```bash
+python run_pipeline.py --pipeline datasets/my_dataset/pipeline.yaml
 ```
 
 ## Pipeline Steps
 
-### Step 01: Convert (`01_convert.py`)
-Reads all `.xlsx` and `.xls` files from `raw/` and converts them to Parquet format in `clean/`. Uses openpyxl for Excel reading and pyarrow for Parquet output. Each input file produces one output file with the same base name.
-
-**Reads:** `raw/*.xlsx`, `raw/*.xls`
-**Outputs:** `clean/{filename}.parquet`
-**Logs:** File conversion count
-
-### Step 02: Normalize Schema (`02_normalize_schema.py`)
-Renames all columns to lowercase snake_case (e.g., `TaskID` → `taskid`, `Effective Date` → `effective_date`). Reorders columns to match the order defined in `schema.yaml`. Extra columns not in the schema are appended at the end.
-
-**Reads:** `clean/*.parquet`, `config/schema.yaml`
-**Outputs:** Overwrites `clean/*.parquet`
-**Logs:** Per-file normalization
-
-### Step 03: Add Missing Columns (`03_add_missing_columns.py`)
-Adds any columns defined in `schema.yaml` that are missing from the data, with null values and the correct dtype. This ensures all files have a consistent column set even if source files are incomplete.
-
-**Reads:** `clean/*.parquet`, `config/schema.yaml`
-**Outputs:** Overwrites `clean/*.parquet`
-**Logs:** Per-file column additions (e.g., "Added column taskstatus to tasks_batch_07.parquet")
-
-### Step 04: Clean Errors (`04_clean_errors.py`)
-Casts each column to its schema-defined dtype (int64, float64, datetime64, string, boolean). Rows that fail type casting are moved to a sidecar file `{filename}_errors.parquet` for inspection. The main file retains only clean rows.
-
-**Reads:** `clean/*.parquet`, `config/schema.yaml`
-**Outputs:** Overwrites `clean/*.parquet`, creates `clean/*_errors.parquet` if errors exist
-**Logs:** Cast error counts per column
-
-### Step 05: Normalize Values (`05_normalize_values.py`)
-Applies value mappings from `value_maps.yaml` to standardize categorical values. Fixes issues like inconsistent casing (`"completed"` → `"Completed"`), typos, and formatting problems (double spaces in drawer names).
-
-**Reads:** `clean/*.parquet`, `config/value_maps.yaml`
-**Outputs:** Overwrites `clean/*.parquet`
-**Logs:** Remap counts per column (e.g., "column flowname - 6 value(s) remapped")
-
-### Step 06: Combine Datasets (`06_combine_datasets.py`)
-Unions all cleaned Parquet files into a single combined dataset. Validates that the primary key (defined in `combine.yaml`) has no duplicates. Supports both `union` mode (concat all) and `join` mode (merge on key).
-
-**Reads:** `clean/*.parquet` (excluding `*_errors.parquet`), `config/combine.yaml`
-**Outputs:** `analytics/combined.parquet`
-**Logs:** Row counts per file before/after combination
-
-### Step 07: Handle Nulls (`07_handle_nulls.py`)
-Applies null-filling strategies defined in `schema.yaml`. Supported strategies: `fill_zero`, `fill_forward`, `fill_backward`, `fill_unknown`. Only applies to columns with a `fill_strategy` specified.
-
-**Reads:** `analytics/combined.parquet`, `config/schema.yaml`
-**Outputs:** Overwrites `analytics/combined.parquet`
-**Logs:** Null rate before/after per column
-
-### Step 08: Validate (`08_validate.py`)
-Final validation gate. Checks row count, required columns, duplicate rate on primary key, null rate per column, and dtype correctness. Writes a detailed JSON report. Pipeline fails if any threshold is breached.
-
-**Reads:** `analytics/combined.parquet`, `config/schema.yaml`, `config/combine.yaml`
-**Outputs:** `logs/validation_report.json`
-**Logs:** Pass/fail per check, detailed failure reasons
-
-### Step 09: Export SQLite (`09_export_sqlite.py`)
-Exports the combined Parquet file to a SQLite database for portable analytics. Creates indexes on frequently queried columns and runs verification queries to confirm data integrity.
-
-**Reads:** `analytics/combined.parquet`
-**Outputs:** `analytics/tasks.db`
-**Logs:** Row counts, unique task counts, status/flow breakdowns
-
-### Step 10: SQLite Views (`10_sqlite_views.py`)
-Creates SQL views in the SQLite database for common analytics queries. Views provide pre-computed metrics like task duration, daily volume, drawer performance, and carrier workload.
-
-**Reads:** `analytics/tasks.db`
-**Outputs:** Creates 5 views in `analytics/tasks.db`
-**Logs:** View creation confirmations, row counts per view
+| Step | Script | Description |
+|------|--------|-------------|
+| 01 | convert | Excel → Parquet |
+| 02 | normalize_schema | Lowercase column names, reorder to schema |
+| 03 | add_missing_columns | Add schema columns missing from source |
+| 04 | clean_errors | Cast types, copy bad rows to `errors/` |
+| 05 | normalize_values | Apply value_maps.yaml transformations |
+| 06 | combine_datasets | Union all files, add `row_id` primary key |
+| 07 | handle_nulls | Apply fill strategies from schema |
+| 08 | validate | Check nulls, dtypes, row count; write JSON report |
+| 09 | export_sqlite | Write to SQLite (table from pipeline.yaml); create/replace table only |
+| 10 | sqlite_views | Create task analytics views + cross-dataset view if both tables exist |
 
 ## Configuration
 
 ### schema.yaml
 
-Defines the target schema: column names, data types, nullability, and validation thresholds.
-
 ```yaml
 columns:
   taskid:
-    dtype: int64          # Supported: string, int64, float64, datetime64, bool
-    nullable: false       # If false, column must exist and is a required column
-    primary_key: true     # Used for duplicate detection
+    dtype: int64           # int64, float64, string, datetime64, bool
+    nullable: false
 
   taskstatus:
     dtype: string
     nullable: true
-    max_null_rate: 0.60   # Per-column override (default is global max_null_rate)
-    allowed_values:       # Optional: list of valid values for documentation
-      - "Completed"
-      - "In Progress"
-      - "Pending"
+    max_null_rate: 0.75    # Per-column null threshold
 
   dateavailable:
     dtype: datetime64
     nullable: true
-    fill_strategy: null   # Options: fill_zero, fill_forward, fill_backward, fill_unknown
+    fill_strategy: null    # fill_zero, fill_forward, fill_backward, fill_unknown
 
 validation:
-  max_null_rate: 0.30     # Global threshold: fail if any column > 30% null
-  max_duplicate_rate: 0.01  # Fail if > 1% duplicate primary keys
-  min_row_count: 1        # Fail if empty after cleaning
+  max_null_rate: 0.30      # Global null threshold
+  max_duplicate_rate: 0.01 # Not used (row_id is always unique)
+  min_row_count: 1
 
-column_order:             # Output column order
+column_order:
   - taskid
   - drawer
   # ... remaining columns
 ```
 
-**When to update schema.yaml:**
-- Adding a new column: Add entry under `columns` with dtype and nullable
-- Changing a column type: Update the `dtype` value
-- Adjusting validation: Modify thresholds in `validation` section
-- Adding fill strategy: Add `fill_strategy` to column definition
+### combine.yaml
+
+```yaml
+# Primary key for validation duplicate check (step 06 adds row_id)
+primary_key: row_id
+
+# Output filename under dataset analytics/
+output: combined.parquet
+```
 
 ### value_maps.yaml
 
-Maps raw values to standardized values. Applied during step 05.
-
 ```yaml
 taskstatus:
-  "completed": "Completed"    # Fix lowercase
-  "COMPLETED": "Completed"    # Fix uppercase
+  "completed": "Completed"
+  "COMPLETED": "Completed"
   "in progress": "In Progress"
-  "inprogress": "In Progress" # Fix missing space
-
-flowname:
-  "uw renewal": "UW Renewal"
 
 drawer:
   "SCU  Bothell": "SCU Bothell"  # Fix double space
 ```
 
-**When to update value_maps.yaml:**
-- New variant discovered in source data
-- Typos or casing issues found in validation
-- Adding mappings for a new categorical column
+## Key Design Decisions
 
-**Example: Adding a new value mapping**
-```yaml
-carrier:
-  "Markel west": "Markel West"  # Fix casing
-  "ZURICH": "Zurich North America"  # Standardize name
+- **Surrogate key (`row_id`)**: Auto-generated 1-based integer. Allows duplicate business keys (taskid) across monthly snapshots.
+- **Error rows copied, not filtered**: Bad rows go to `errors/` for inspection but don't block the pipeline.
+- **Idempotent**: Rerunning processes everything from scratch.
+- **Multi-dataset**: Each dataset is self-contained with its own config and data directories.
+- **Shared warehouse**: Datasets can write to a single `analytics/warehouse.db` so tables can be joined in SQL and views.
+
+## Shared SQLite Warehouse
+
+When `pipeline.yaml` sets `sqlite.database: warehouse.db`, step 09 writes to **project** `analytics/warehouse.db` instead of a per-dataset database. This allows multiple datasets to share one DB:
+
+- **tasks** pipeline → table `tasks`
+- **dept_mapping** pipeline → table `employees`
+
+Step 10 creates a **cross-dataset view** when both tables exist:
+
+- **`v_tasks_by_department`** – tasks LEFT JOIN employees on `LOWER(assignedto)=LOWER(userid)` OR `LOWER(operationby)=LOWER(userid)` OR `LOWER(taskfrom)=LOWER(userid)`, adding `full_name`, `employee_title`, `division`, `team`, `divisionid` from employees. Use it for task counts by division or to see which employee a task is assigned to.
+
+Example queries:
+
+```sql
+SELECT COUNT(*) FROM tasks;
+SELECT COUNT(*) FROM employees;
+SELECT division, COUNT(*) AS task_count FROM v_tasks_by_department GROUP BY division;
+SELECT * FROM v_tasks_by_department WHERE full_name IS NOT NULL LIMIT 10;
 ```
 
-### combine.yaml
+## SQLite Database
 
-Controls how files are combined.
+```bash
+# Shared warehouse (after running both tasks and dept_mapping)
+sqlite3 analytics/warehouse.db
 
-```yaml
-mode: union         # "union" (concat) or "join" (merge)
-primary_key:
-  - taskid          # Column(s) that must be unique after combination
-output: combined.parquet  # Output filename
+# Tables: tasks, employees
+# Task-only views (require tasks table): v_task_duration, v_daily_volume, v_drawer_summary, v_carrier_workload, v_missing_status
+# Cross-dataset view: v_tasks_by_department
 ```
+
+Per-dataset DBs (when `sqlite.database` is not `warehouse.db`) live under `datasets/<name>/analytics/<database>`.
 
 ## Testing
 
@@ -231,169 +241,16 @@ output: combined.parquet  # Output filename
 # Run all tests
 pytest tests/ -v
 
-# Run specific test class
-pytest tests/test_pipeline.py::TestSchemaConfig -v
-
-# Regenerate test fixtures (12 Excel files with various data quality issues)
+# Generate test fixtures (tasks: project raw/; copy to datasets/tasks/raw for pipeline)
 python tests/create_fixtures.py
-
-# Test fixtures include:
-# - Files 01-06: Full 21 columns
-# - Files 07-12: Missing TaskStatus column (20 columns)
-# - Random nulls in AcctExec, filename, SentTo
-# - Casing variations in flowname and TaskStatus
-# - Double spaces in Drawer names
+python tests/create_dept_fixtures.py   # writes datasets/dept_mapping/raw/employee_mapping.xlsx
 ```
-
-**Adding new test cases:**
-1. Add test Excel files to `tests/fixtures/`
-2. Create new test methods in `tests/test_pipeline.py`
-3. Follow existing patterns: load fixtures, apply transformations, assert expectations
-
-## Adding New Source Files
-
-When a new batch of Excel files arrives:
-
-1. Drop the `.xlsx` files into `raw/`
-2. Run the pipeline: `python run_pipeline.py`
-3. Check `logs/validation_report.json` for any issues
-4. If new value variants appear, update `config/value_maps.yaml`
-5. If new columns appear, update `config/schema.yaml`
-
-The pipeline is idempotent—rerunning it will reprocess all files from scratch.
-
-## Known Data Issues
-
-**6 of 12 source files are missing the TaskStatus column.** The pipeline handles this by:
-1. Step 03 adds the missing `taskstatus` column with null values
-2. Schema allows `taskstatus` to be nullable with `max_null_rate: 0.60`
-3. Combined output has ~53% null rate for `taskstatus` (expected for 6/12 files missing it)
-
-If future source files include TaskStatus, the null rate will naturally decrease.
-
-## SQLite Database
-
-The pipeline exports data to a portable SQLite database at `analytics/tasks.db`. No server required—query directly from the command line, Python, or any SQLite client (DBeaver, DB Browser, etc.).
-
-### Querying from Command Line
-
-```bash
-# Open the database
-sqlite3 analytics/tasks.db
-
-# Basic queries
-SELECT COUNT(*) FROM tasks;
-SELECT taskstatus, COUNT(*) FROM tasks GROUP BY taskstatus;
-SELECT drawer, COUNT(*) FROM tasks GROUP BY drawer ORDER BY COUNT(*) DESC;
-
-# Use a view
-SELECT * FROM v_drawer_summary;
-
-# List all tables and views
-.tables
-
-# Exit
-.quit
-```
-
-### Querying from Python
-
-```python
-import sqlite3
-import pandas as pd
-
-# Connect to database
-conn = sqlite3.connect('analytics/tasks.db')
-
-# Query into DataFrame
-df = pd.read_sql_query("SELECT * FROM tasks WHERE taskstatus = 'Completed'", conn)
-
-# Use a view
-summary = pd.read_sql_query("SELECT * FROM v_drawer_summary", conn)
-
-conn.close()
-```
-
-### Available Views
-
-| View | Description |
-|------|-------------|
-| `v_task_duration` | Tasks with calculated `duration_hours` and `total_lifecycle_hours` |
-| `v_daily_volume` | Daily count of tasks initiated and completed |
-| `v_drawer_summary` | Per-drawer totals, completion counts, and average duration |
-| `v_carrier_workload` | Per-carrier/flowname task counts by status |
-| `v_missing_status` | Tasks with NULL taskstatus (from files 07-12) |
-
-### Indexes
-
-The database includes indexes for fast filtering on:
-- `taskstatus`
-- `drawer`
-- `carrier`
-- `flowname`
-- `effectivedate`
-- `dateinitiated`
-
-### Column Types in SQLite
-
-| Column | SQLite Type |
-|--------|-------------|
-| `taskid` | INTEGER PRIMARY KEY |
-| `filenumber` | INTEGER |
-| `*date*`, `*time*` columns | TEXT (ISO 8601 format) |
-| All others | TEXT |
-
-Datetime columns are stored as ISO 8601 strings (`YYYY-MM-DD HH:MM:SS`) so SQLite can sort and compare them correctly.
 
 ## Troubleshooting
 
-### "ModuleNotFoundError: No module named 'pandas'"
-Virtual environment not activated. Run:
-```bash
-.venv\Scripts\activate   # Windows
-source .venv/bin/activate  # macOS/Linux
-```
-
-### "No Excel files in raw/"
-No input files found. Add `.xlsx` files to the `raw/` directory.
-
-### "Required columns missing in {file}.parquet"
-Source file is missing columns that are marked `nullable: false` in schema.yaml. Either:
-- Add the missing columns to source data
-- Set `nullable: true` in schema.yaml if the column is truly optional
-
-### "Validation failed: null_rate_per_column"
-A column has more nulls than allowed. Options:
-- Set per-column `max_null_rate` in schema.yaml
-- Add a `fill_strategy` to fill nulls
-- Fix the source data
-
-### "Duplicate primary key(s) after combination"
-Multiple rows have the same primary key value. Check:
-- Are source files overlapping?
-- Is the primary key column correct in combine.yaml?
-
-### "Step X failed with exit code 1"
-Check `logs/pipeline.log` for detailed error messages. Common causes:
-- Schema mismatch between config and data
-- Invalid YAML syntax in config files
-- File permission issues
-
-## Clean Teardown
-
-To reset everything and start fresh:
-
-```bash
-# Windows (PowerShell)
-deactivate
-Remove-Item -Recurse -Force .venv, clean, analytics, report, logs
-
-# Windows (cmd)
-deactivate
-rmdir /s /q .venv clean analytics report logs
-
-# macOS/Linux
-deactivate && rm -rf .venv clean/ analytics/ report/ logs/
-```
-
-Then follow Quick Start to recreate the environment.
+| Error | Solution |
+|-------|----------|
+| `Pipeline config not found` | Check --pipeline path points to a valid pipeline.yaml |
+| `No Excel files in raw/` | Add .xlsx files to the dataset's raw/ folder |
+| `Validation failed: null_rate` | Increase max_null_rate in schema.yaml |
+| `ModuleNotFoundError` | Activate venv: `.venv\Scripts\activate` |
