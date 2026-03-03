@@ -40,6 +40,6 @@ aux
 
 
 # Raw data files (Excel inputs)
-datasets/*.xlsx
-datasets/*.xls
+**/raw/*.xlsx
+**/raw/*.xls
 
