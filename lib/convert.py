@@ -1,12 +1,19 @@
-"""Step 01: Convert Excel in raw/ to Parquet in clean/."""
+"""Step 01: Convert Excel in raw/ to Parquet in clean/ (chunked for large files)."""
 import sys
 import time
 from pathlib import Path
 from typing import Callable
 
+import openpyxl
 import pandas as pd
+import pyarrow as pa
+import pyarrow.parquet as pq
+import psutil
+
+from lib.logging_util import monitor_step
 
 EXCEL_EXTENSIONS = (".xlsx", ".xls")
+DEFAULT_CHUNK_SIZE = 50_000
 
 
 def _format_size(size_bytes: int) -> str:
@@ -39,19 +46,77 @@ def coerce_mixed_types(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def convert_excel_to_parquet(
+    excel_path: Path,
+    output_path: Path,
+    chunk_size: int = DEFAULT_CHUNK_SIZE,
+) -> tuple[int, list[str], int]:
+    """Read Excel in chunks via openpyxl, stream to Parquet. Returns (total_rows, headers, chunk_count).
+
+    Uses read_only=True and iter_rows so 500K+ row files stay under ~200MB RAM.
+    """
+    wb = openpyxl.load_workbook(excel_path, read_only=True)
+    ws = wb.active
+
+    rows = ws.iter_rows(values_only=True)
+    headers = [str(h).strip() if h is not None else "" for h in next(rows)]
+
+    writer = None
+    total_rows = 0
+    chunk_count = 0
+    chunk = []
+
+    for row in rows:
+        chunk.append(row)
+        if len(chunk) >= chunk_size:
+            df = pd.DataFrame(chunk, columns=headers)
+            df = coerce_mixed_types(df)
+            table = pa.Table.from_pandas(df, preserve_index=False)
+            if writer is None:
+                writer = pq.ParquetWriter(str(output_path), table.schema)
+            writer.write_table(table)
+            total_rows += len(chunk)
+            chunk_count += 1
+            chunk = []
+
+    if chunk:
+        df = pd.DataFrame(chunk, columns=headers)
+        df = coerce_mixed_types(df)
+        table = pa.Table.from_pandas(df, preserve_index=False)
+        if writer is None:
+            writer = pq.ParquetWriter(str(output_path), table.schema)
+        writer.write_table(table)
+        total_rows += len(chunk)
+        chunk_count += 1
+
+    if writer is not None:
+        writer.close()
+    else:
+        # No data rows: write empty Parquet with schema from headers
+        empty_df = pd.DataFrame(columns=headers)
+        table = pa.Table.from_pandas(empty_df, preserve_index=False)
+        pq.write_table(table, str(output_path))
+
+    wb.close()
+    return total_rows, headers, chunk_count
+
+
+@monitor_step
 def run_convert(
     raw_dir: Path,
     clean_dir: Path,
     on_progress: Callable[[int, int, Path, int, float], None] | None = None,
     verbose: bool = True,
+    chunk_size: int = DEFAULT_CHUNK_SIZE,
 ) -> int:
-    """Read all Excel from raw_dir, write Parquet to clean_dir. Returns number of files converted.
+    """Read all Excel from raw_dir, write Parquet to clean_dir (chunked for .xlsx). Returns number of files converted.
 
     Args:
         raw_dir: Directory containing Excel files
         clean_dir: Directory to write Parquet files
         on_progress: Callback(current, total, path, rows, elapsed_seconds) after each file
         verbose: If True and no callback, print progress to stdout
+        chunk_size: Rows per chunk for .xlsx (ignored for .xls)
     """
     if not raw_dir.is_dir():
         raise FileNotFoundError(f"No raw/ directory at {raw_dir}")
@@ -69,6 +134,7 @@ def run_convert(
     total_size = sum(f.stat().st_size for f in excel_files)
     total_rows = 0
     start_time = time.time()
+    proc = psutil.Process()
 
     if verbose and on_progress is None:
         print(f"Converting {total} Excel file(s) ({_format_size(total_size)})...")
@@ -77,23 +143,37 @@ def run_convert(
     for i, path in enumerate(excel_files, 1):
         file_start = time.time()
         file_size = path.stat().st_size
+        rss_before_mb = proc.memory_info().rss / 1024 / 1024
 
         if verbose and on_progress is None:
             print(f"  [{i}/{total}] {path.name} ({_format_size(file_size)})... ", end="")
             sys.stdout.flush()
 
-        df = pd.read_excel(path, engine="openpyxl")
-        df = coerce_mixed_types(df)
         out_path = clean_dir / f"{path.stem}.parquet"
-        df.to_parquet(out_path, index=False)
+
+        if path.suffix.lower() == ".xlsx":
+            rows, headers, chunk_count = convert_excel_to_parquet(
+                path, out_path, chunk_size=chunk_size
+            )
+        else:
+            # .xls: openpyxl doesn't support it, use pandas
+            df = pd.read_excel(path, engine="xlrd" if path.suffix.lower() == ".xls" else "openpyxl")
+            df = coerce_mixed_types(df)
+            df.to_parquet(out_path, index=False)
+            rows = len(df)
+            chunk_count = 1
 
         file_elapsed = time.time() - file_start
-        total_rows += len(df)
+        rss_after_mb = proc.memory_info().rss / 1024 / 1024
+        total_rows += rows
 
         if on_progress is not None:
-            on_progress(i, total, path, len(df), file_elapsed)
+            on_progress(i, total, path, rows, file_elapsed)
         elif verbose:
-            print(f"{len(df):,} rows in {_format_time(file_elapsed)}")
+            print(
+                f"{rows:,} rows, {chunk_count} chunk(s), "
+                f"memory {rss_before_mb:.1f} -> {rss_after_mb:.1f} MB in {_format_time(file_elapsed)}"
+            )
             sys.stdout.flush()
 
     total_elapsed = time.time() - start_time

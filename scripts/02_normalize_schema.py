@@ -6,10 +6,12 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from lib.logging_util import setup_logging
 from lib.normalize_schema import run_normalize_schema
-from lib.paths import CLEAN_DIR, SCHEMA_PATH
+from lib.paths import CLEAN_DIR, LOGS_DIR, SCHEMA_PATH
 
 if __name__ == "__main__":
+    setup_logging(LOGS_DIR)
     try:
         n = run_normalize_schema(CLEAN_DIR, SCHEMA_PATH)
     except (FileNotFoundError, ValueError) as e:

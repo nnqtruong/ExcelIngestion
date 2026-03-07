@@ -17,7 +17,13 @@
       "Bash(\"c:/Users/quang/CRC Code/ExcelIngestion/.venv/Scripts/python.exe\" -m pytest \"c:/Users/quang/CRC Code/ExcelIngestion/tests\" -v)",
       "Bash(\"c:/Users/quang/CRC Code/ExcelIngestion/.venv/Scripts/python.exe\" \"c:/Users/quang/CRC Code/ExcelIngestion/run_pipeline.py\" --dry-run)",
       "Bash(\"c:/Users/quang/CRC Code/ExcelIngestion/.venv/Scripts/python.exe\" \"c:/Users/quang/CRC Code/ExcelIngestion/run_pipeline.py\" --from-step 1)",
-      "Bash(PIPELINE_DATASET_ROOT=\"c:/Users/quang/CRC Code/ExcelIngestion/datasets/tasks\" \"c:/Users/quang/CRC Code/ExcelIngestion/.venv/Scripts/python.exe\":*)"
+      "Bash(PIPELINE_DATASET_ROOT=\"c:/Users/quang/CRC Code/ExcelIngestion/datasets/tasks\" \"c:/Users/quang/CRC Code/ExcelIngestion/.venv/Scripts/python.exe\":*)",
+      "Bash(\"c:/Users/quang/CRC Code/ExcelIngestion/.venv/Scripts/python.exe\" --version)",
+      "Bash('c:/Users/quang/CRC Code/ExcelIngestion/.venv/Scripts/pip.exe' list)",
+      "Bash(findstr:*)",
+      "Bash(tree:*)",
+      "Bash(find:*)",
+      "Bash(\"c:/Users/quang/CRC Code/ExcelIngestion/.venv/Scripts/pip.exe\" show psutil)"
     ],
     "deny": [],
     "ask": []

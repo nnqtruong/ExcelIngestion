@@ -5,6 +5,8 @@ from pathlib import Path
 
 import pandas as pd
 
+from lib.logging_util import monitor_step
+
 
 def prepare_dataframe_for_sqlite(df: pd.DataFrame) -> pd.DataFrame:
     """Convert datetime columns to ISO 8601 strings for SQLite."""
@@ -78,6 +80,7 @@ def export_to_sqlite(
     return results
 
 
+@monitor_step
 def run_export_sqlite(
     combined_path: Path,
     db_path: Path,

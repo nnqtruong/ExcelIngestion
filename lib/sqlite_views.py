@@ -3,6 +3,8 @@ import logging
 import sqlite3
 from pathlib import Path
 
+from lib.logging_util import monitor_step
+
 VIEWS = {
     "v_task_duration": """
         CREATE VIEW IF NOT EXISTS v_task_duration AS
@@ -93,6 +95,7 @@ def verify_views(conn: sqlite3.Connection, view_names: list[str], log: logging.L
     return results
 
 
+@monitor_step
 def run_sqlite_views(db_path: Path, log: logging.Logger) -> dict:
     """Create and verify views in db_path. Returns verify results for created views only."""
     if not db_path.exists():

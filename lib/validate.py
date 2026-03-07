@@ -1,22 +1,18 @@
-"""Step 08: Validate row count, required columns, duplicates, null rates, dtypes; output report."""
+"""Step 08: Validate row count, required columns, duplicates, null rates, dtypes via DuckDB."""
 import json
 from pathlib import Path
 
-import numpy as np
-import pandas as pd
+import duckdb
 import yaml
 
 from lib.schema import load_schema
+from lib.logging_util import monitor_step
 
 
 def _json_serial(obj):
-    """Convert numpy/pandas types to native Python for JSON."""
-    if isinstance(obj, (np.bool_, np.integer)):
-        return bool(obj) if isinstance(obj, np.bool_) else int(obj)
-    if isinstance(obj, np.floating):
-        return float(obj)
-    if isinstance(obj, np.ndarray):
-        return obj.tolist()
+    """Convert types to native Python for JSON."""
+    if hasattr(obj, "item"):  # numpy scalar
+        return obj.item()
     raise TypeError(f"Object of type {type(obj).__name__} is not JSON serializable")
 
 
@@ -56,15 +52,16 @@ def get_expected_dtype(spec: dict) -> str:
     return str(d).strip().lower()
 
 
-def pandas_dtype_normalized(series: pd.Series) -> str:
-    d = str(series.dtype).lower()
-    if d in ("int64", "int32") or d.startswith("int"):
+def duckdb_dtype_to_normalized(duckdb_type: str) -> str:
+    """Map DuckDB type string to normalized schema dtype (int64, float64, datetime64, bool, string)."""
+    d = (duckdb_type or "").upper()
+    if "INT" in d or d == "BIGINT":
         return "int64"
-    if d in ("float64", "float32") or d.startswith("float"):
+    if "DOUBLE" in d or "FLOAT" in d:
         return "float64"
-    if "datetime" in d:
+    if "TIMESTAMP" in d or "DATE" in d:
         return "datetime64"
-    if d in ("bool", "boolean"):
+    if "BOOL" in d:
         return "bool"
     return "string"
 
@@ -73,14 +70,26 @@ def dtype_matches(schema_dtype: str, actual_dtype: str) -> bool:
     return get_expected_dtype({"dtype": schema_dtype}) == actual_dtype
 
 
+def _escape_sql(s: str) -> str:
+    return s.replace("'", "''")
+
+
+def _quote_id(name: str) -> str:
+    return '"' + name.replace('"', '""') + '"'
+
+
 def run_validation(
     path: Path,
     schema: dict,
     combine_config: dict | None,
 ) -> dict:
-    """Run all checks; return report dict with 'passed' and 'checks'."""
-    df = pd.read_parquet(path)
-    n_rows = len(df)
+    """Run all checks via DuckDB queries against Parquet. Return report dict with 'passed' and 'checks'."""
+    conn = duckdb.connect()
+    input_path = path.resolve().as_posix()
+    in_sql = _escape_sql(input_path)
+    tbl = f"read_parquet('{in_sql}')"
+
+    n_rows = conn.execute(f"SELECT COUNT(*) FROM {tbl}").fetchone()[0]
     cols_list = get_columns_list(schema)
     validation = schema.get("validation") or {}
     max_null_rate = float(validation.get("max_null_rate", 1.0))
@@ -89,6 +98,7 @@ def run_validation(
 
     report = {"file": str(path), "row_count": n_rows, "checks": {}, "passed": True}
 
+    # Row count
     row_count_ok = n_rows >= min_row_count
     report["checks"]["row_count"] = {
         "min_row_count": min_row_count,
@@ -98,8 +108,11 @@ def run_validation(
     if not row_count_ok:
         report["passed"] = False
 
+    # Required columns: get file columns from DuckDB
+    cur = conn.execute(f"SELECT * FROM {tbl} LIMIT 0")
+    file_columns = [d[0] for d in cur.description]
     required = get_required_columns(schema)
-    missing = [c for c in required if c not in df.columns]
+    missing = [c for c in required if c not in file_columns]
     required_ok = len(missing) == 0
     report["checks"]["required_columns"] = {
         "required": required,
@@ -109,9 +122,10 @@ def run_validation(
     if not required_ok:
         report["passed"] = False
 
+    # Duplicate rate (primary key)
     primary_key = get_primary_key(schema, combine_config)
     if primary_key:
-        pk_missing = [c for c in primary_key if c not in df.columns]
+        pk_missing = [c for c in primary_key if c not in file_columns]
         if pk_missing:
             report["checks"]["duplicate_rate"] = {
                 "primary_key": primary_key,
@@ -120,8 +134,16 @@ def run_validation(
             }
             report["passed"] = False
         else:
-            dup_mask = df.duplicated(subset=primary_key, keep=False)
-            n_dup = dup_mask.sum()
+            if len(primary_key) == 1:
+                pk_col = _quote_id(primary_key[0])
+                n_dup = conn.execute(
+                    f"SELECT SUM(c) FROM (SELECT {pk_col}, COUNT(*) AS c FROM {tbl} GROUP BY {pk_col} HAVING COUNT(*) > 1) sub"
+                ).fetchone()[0] or 0
+            else:
+                pk_list = ", ".join(_quote_id(c) for c in primary_key)
+                n_dup = conn.execute(
+                    f"SELECT SUM(c) FROM (SELECT {pk_list}, COUNT(*) AS c FROM {tbl} GROUP BY {pk_list} HAVING COUNT(*) > 1) sub"
+                ).fetchone()[0] or 0
             duplicate_rate = n_dup / n_rows if n_rows else 0.0
             dup_ok = duplicate_rate <= max_duplicate_rate
             report["checks"]["duplicate_rate"] = {
@@ -140,12 +162,17 @@ def run_validation(
             "passed": True,
         }
 
+    # Null rate per column (DuckDB: COUNT(*) FILTER (WHERE col IS NULL) * 100.0 / COUNT(*))
     null_rates = {}
     null_ok = True
     for name, spec in cols_list:
-        if name not in df.columns:
+        if name not in file_columns:
             continue
-        rate = float(df[name].isna().sum() / n_rows) if n_rows else 0.0
+        q = _quote_id(name)
+        rate = conn.execute(
+            f"SELECT COUNT(*) FILTER (WHERE {q} IS NULL) * 1.0 / NULLIF(COUNT(*), 0) FROM {tbl}"
+        ).fetchone()[0]
+        rate = float(rate) if rate is not None else 0.0
         null_rates[name] = round(rate, 6)
         col_max = (spec if isinstance(spec, dict) else {}).get("max_null_rate")
         threshold = float(col_max) if col_max is not None else max_null_rate
@@ -159,13 +186,18 @@ def run_validation(
     if not null_ok:
         report["passed"] = False
 
+    # Dtype: get from DuckDB DESCRIBE
+    describe_rows = conn.execute(f"DESCRIBE SELECT * FROM {tbl}").fetchall()
+    # DESCRIBE returns (column_name, column_type, null, default, key); use first two
+    file_dtypes = {row[0]: (row[1] if len(row) > 1 else "VARCHAR") for row in describe_rows}
     dtype_results = {}
     dtype_ok = True
     for name, spec in cols_list:
-        if name not in df.columns:
+        if name not in file_columns:
             continue
         expected = get_expected_dtype(spec if isinstance(spec, dict) else {})
-        actual = pandas_dtype_normalized(df[name])
+        actual_raw = file_dtypes.get(name, "VARCHAR")
+        actual = duckdb_dtype_to_normalized(actual_raw)
         ok = dtype_matches(expected, actual)
         dtype_results[name] = {"expected": expected, "actual": actual, "passed": ok}
         if not ok:
@@ -174,16 +206,19 @@ def run_validation(
     if not dtype_ok:
         report["passed"] = False
 
+    conn.close()
+
     return report
 
 
+@monitor_step
 def run_validate(
     combined_path: Path,
     schema_path: Path,
     combine_config_path: Path,
     report_path: Path,
 ) -> dict:
-    """Load schema and combine config, run validation, write report. Returns report dict."""
+    """Load schema and combine config, run validation via DuckDB, write report. Returns report dict."""
     schema = load_schema(schema_path)
     combine_config = None
     if combine_config_path.exists():

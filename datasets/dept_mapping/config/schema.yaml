@@ -48,6 +48,14 @@ columns:
     dtype: string
     nullable: false
 
+  _source_file:
+    dtype: string
+    nullable: true
+
+  _ingested_at:
+    dtype: datetime64
+    nullable: true
+
 column_order:
   - userid
   - id
@@ -60,6 +68,8 @@ column_order:
   - division1
   - teamid
   - team
+  - _source_file
+  - _ingested_at
 
 validation:
   max_null_rate: 1.0   # No null-rate failure (report only)

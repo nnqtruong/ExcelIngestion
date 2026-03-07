@@ -6,10 +6,10 @@ import pytest
 from pathlib import Path
 
 ROOT = Path(__file__).parent.parent
-CONFIG = ROOT / "config"
+CONFIG = ROOT / "datasets" / "tasks" / "config"
 FIXTURES = Path(__file__).parent / "fixtures"
 ANALYTICS = ROOT / "analytics"
-DB_PATH = ANALYTICS / "tasks.db"
+DB_PATH = ANALYTICS / "warehouse.db"
 
 
 @pytest.fixture
@@ -43,10 +43,11 @@ def partial_df():
 
 class TestSchemaConfig:
     def test_schema_has_all_21_columns(self, schema):
-        assert len(schema["columns"]) == 21
+        # 21 task columns + _source_file, _ingested_at
+        assert len(schema["columns"]) == 23
 
     def test_schema_has_column_order(self, schema):
-        assert len(schema["column_order"]) == 21
+        assert len(schema["column_order"]) == 23
         assert schema["column_order"][0] == "taskid"
 
     def test_schema_columns_match_order(self, schema):
@@ -76,7 +77,9 @@ class TestNormalizeSchema:
 
     def test_all_expected_columns_present(self, clean_df, schema):
         renamed = clean_df.rename(columns=str.lower)
-        expected = set(schema["column_order"])
+        # _source_file, _ingested_at added at combine time, not in per-file clean output
+        combine_only = {"_source_file", "_ingested_at"}
+        expected = set(schema["column_order"]) - combine_only
         actual = set(renamed.columns)
         missing = expected - actual
         assert not missing, f"Missing columns: {missing}"
@@ -166,7 +169,8 @@ class TestValidation:
 
     def test_clean_data_column_count(self, clean_df, schema):
         renamed = clean_df.rename(columns=str.lower)
-        expected = set(schema["column_order"])
+        combine_only = {"_source_file", "_ingested_at"}
+        expected = set(schema["column_order"]) - combine_only
         assert set(renamed.columns) == expected
 
 
@@ -184,14 +188,14 @@ class TestSQLiteExport:
 
     @pytest.fixture
     def parquet_df(self):
-        """Fixture to load combined parquet if it exists."""
-        parquet_path = ANALYTICS / "combined.parquet"
+        """Fixture to load combined parquet if it exists (tasks dataset)."""
+        parquet_path = ROOT / "datasets" / "tasks" / "analytics" / "combined.parquet"
         if not parquet_path.exists():
             pytest.skip("Combined parquet not found - run pipeline first")
         return pd.read_parquet(parquet_path)
 
     def test_db_exists(self):
-        """Test that analytics/tasks.db is created."""
+        """Test that analytics/warehouse.db is created."""
         assert DB_PATH.exists(), f"SQLite database not found at {DB_PATH}"
 
     def test_row_count_matches_parquet(self, db_conn, parquet_df):

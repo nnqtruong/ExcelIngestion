@@ -3,19 +3,39 @@ Generate 12 realistic test Excel files for pipeline testing.
 - Files 01-06: full columns (all 21)
 - Files 07-12: missing TaskStatus column
 
-Run: python tests/create_fixtures.py
+Scale (--scale):
+  small   = 100 rows per file (default, fast tests)
+  medium  = 10K rows per file
+  large   = 500K rows per file (stress test; generating 12 files can take 30+ min)
+
+Run:
+  python tests/create_fixtures.py                    # small (default)
+  python tests/create_fixtures.py --scale small
+  python tests/create_fixtures.py --scale medium
+  python tests/create_fixtures.py --scale large
 """
-import pandas as pd
-import numpy as np
+import argparse
+import sys
 from pathlib import Path
+
+import numpy as np
+import pandas as pd
 from datetime import datetime, timedelta
 import random
 
 random.seed(42)
 np.random.seed(42)
 
-RAW_DIR = Path(__file__).parent.parent / "raw"
-RAW_DIR.mkdir(parents=True, exist_ok=True)
+ROOT = Path(__file__).resolve().parent.parent
+
+# Default: write to dataset raw dir so run_pipeline --dataset tasks can use it
+DEFAULT_RAW_DIR = ROOT / "datasets" / "tasks" / "raw"
+
+SCALE_ROWS = {
+    "small": 100,
+    "medium": 10_000,
+    "large": 500_000,
+}
 
 # --- Reference data pools ---
 DRAWERS = [
@@ -144,26 +164,57 @@ def inject_realistic_dirt(df, file_index):
     return df
 
 
-# --- Generate 12 files ---
-for i in range(1, 13):
-    n_rows = random.randint(80, 150)  # realistic batch sizes
-    start_id = 40000000 + (i * 100000)
-    rows = generate_rows(n_rows, start_id)
-    df = pd.DataFrame(rows)
+def main():
+    parser = argparse.ArgumentParser(
+        description="Generate 12 test Excel files for pipeline testing.",
+    )
+    parser.add_argument(
+        "--scale",
+        choices=list(SCALE_ROWS),
+        default="small",
+        help="Rows per file: small=100, medium=10K, large=500K (default: small)",
+    )
+    parser.add_argument(
+        "--output-dir",
+        type=Path,
+        default=DEFAULT_RAW_DIR,
+        help=f"Directory to write Excel files (default: {DEFAULT_RAW_DIR})",
+    )
+    args = parser.parse_args()
 
-    # Files 7-12: drop TaskStatus column
-    if i >= 7:
-        df = df.drop(columns=["TaskStatus"])
+    raw_dir = args.output_dir.resolve()
+    raw_dir.mkdir(parents=True, exist_ok=True)
 
-    # Add realistic dirt
-    df = inject_realistic_dirt(df, i)
+    n_rows_per_file = SCALE_ROWS[args.scale]
+    print(f"Scale: {args.scale} ({n_rows_per_file:,} rows per file)")
+    print(f"Output: {raw_dir}\n")
 
-    filename = f"tasks_batch_{i:02d}.xlsx"
-    df.to_excel(RAW_DIR / filename, index=False)
+    for i in range(1, 13):
+        start_id = 40000000 + (i * 100000)
+        rows = generate_rows(n_rows_per_file, start_id)
+        df = pd.DataFrame(rows)
 
-    status_col = "YES" if "TaskStatus" in df.columns else "MISSING"
-    print(f"  {filename}  |  {n_rows:>3} rows  |  {len(df.columns):>2} cols  |  TaskStatus: {status_col}")
+        # Files 7-12: drop TaskStatus column
+        if i >= 7:
+            df = df.drop(columns=["TaskStatus"])
 
-print(f"\n12 files created in {RAW_DIR.resolve()}")
-print(f"  Files 01-06: full columns (21)")
-print(f"  Files 07-12: missing TaskStatus column (20)")
+        # Add realistic dirt
+        df = inject_realistic_dirt(df, i)
+
+        filename = f"tasks_batch_{i:02d}.xlsx"
+        out_path = raw_dir / filename
+        df.to_excel(out_path, index=False)
+
+        status_col = "YES" if "TaskStatus" in df.columns else "MISSING"
+        print(f"  {filename}  |  {len(df):>7,} rows  |  {len(df.columns):>2} cols  |  TaskStatus: {status_col}")
+
+    total_rows = 12 * n_rows_per_file
+    print(f"\n12 files created in {raw_dir}")
+    print(f"  Total rows: {total_rows:,}")
+    print(f"  Files 01-06: full columns (21)")
+    print(f"  Files 07-12: missing TaskStatus column (20)")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

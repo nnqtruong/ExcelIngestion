@@ -168,6 +168,11 @@ def main() -> int:
         metavar="N",
         help="Start from step N (1–10). Default: 1.",
     )
+    parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Use DEBUG log level so step timing and memory (monitor_step) are visible.",
+    )
     args = parser.parse_args()
 
     if args.dataset:
@@ -184,6 +189,9 @@ def main() -> int:
 
     logs_dir = dataset_root / "logs"
     log = setup_logging(logs_dir)
+    if args.verbose:
+        log.setLevel(logging.DEBUG)
+        logging.getLogger().setLevel(logging.DEBUG)
 
     if args.dry_run:
         log.info("Dry run: validating config and inputs (no writes).")

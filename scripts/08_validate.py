@@ -7,10 +7,12 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from lib.config import get_combined_path
-from lib.paths import ANALYTICS_DIR, COMBINE_PATH, REPORT_PATH, SCHEMA_PATH
+from lib.logging_util import setup_logging
+from lib.paths import ANALYTICS_DIR, COMBINE_PATH, LOGS_DIR, REPORT_PATH, SCHEMA_PATH
 from lib.validate import run_validate
 
 if __name__ == "__main__":
+    setup_logging(LOGS_DIR)
     combined_path = get_combined_path(ANALYTICS_DIR, COMBINE_PATH)
     try:
         report = run_validate(combined_path, SCHEMA_PATH, COMBINE_PATH, REPORT_PATH)

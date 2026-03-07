@@ -1,65 +1,59 @@
-"""Step 04: Cast columns to schema types; flag failing rows to errors/ sidecar."""
+"""Step 04: Cast columns to schema types; flag failing rows to errors/ sidecar (DuckDB)."""
 import logging
 from pathlib import Path
 
-import numpy as np
-import pandas as pd
+import duckdb
+import psutil
 
 from lib.schema import columns_as_list, load_schema
+from lib.logging_util import monitor_step
 
-
-def _cast_int64(series: pd.Series) -> tuple[pd.Series, pd.Series]:
-    casted = pd.to_numeric(series, errors="coerce").astype("Int64")
-    error = series.notna() & casted.isna()
-    return casted, error
-
-
-def _cast_float64(series: pd.Series) -> tuple[pd.Series, pd.Series]:
-    casted = pd.to_numeric(series, errors="coerce").astype("float64")
-    error = series.notna() & casted.isna()
-    return casted, error
-
-
-def _cast_datetime64(series: pd.Series) -> tuple[pd.Series, pd.Series]:
-    casted = pd.to_datetime(series, errors="coerce")
-    error = series.notna() & casted.isna()
-    return casted, error
-
-
-def _cast_bool(series: pd.Series) -> tuple[pd.Series, pd.Series]:
-    true_vals = {True, "true", "True", "TRUE", "1", 1, "yes", "Yes"}
-    false_vals = {False, "false", "False", "FALSE", "0", 0, "no", "No"}
-    as_obj = series.astype("object")
-    mask_true = as_obj.isin(true_vals)
-    mask_false = as_obj.isin(false_vals)
-    out = pd.Series(
-        np.where(mask_true, True, np.where(mask_false, False, None)),
-        index=series.index,
-        dtype="boolean",
-    )
-    error = series.notna() & out.isna()
-    return out, error
-
-
-def _cast_string(series: pd.Series) -> tuple[pd.Series, pd.Series]:
-    casted = series.astype("string")
-    error = series.notna() & casted.isna()
-    return casted, error
-
-
-CASTERS = {
-    "int64": _cast_int64,
-    "float64": _cast_float64,
-    "datetime64": _cast_datetime64,
-    "bool": _cast_bool,
-    "string": _cast_string,
+COERCE_DTYPES = {"int64", "float64", "datetime64"}
+SCHEMA_DTYPE_TO_DUCKDB = {
+    "int64": "BIGINT",
+    "float64": "DOUBLE",
+    "datetime64": "TIMESTAMP",
+    "bool": "BOOLEAN",
+    "string": "VARCHAR",
 }
 
 
-def cast_column(series: pd.Series, schema_dtype: str) -> tuple[pd.Series, pd.Series]:
-    normalized = (schema_dtype or "string").strip().lower()
-    caster = CASTERS.get(normalized, _cast_string)
-    return caster(series)
+def _escape_sql(s: str) -> str:
+    return s.replace("'", "''")
+
+
+def _quote_id(name: str) -> str:
+    return '"' + name.replace('"', '""') + '"'
+
+
+def _cast_expr(col: str, schema_dtype: str) -> str:
+    """Return DuckDB expression that casts column to schema type (returns NULL on failure)."""
+    q = _quote_id(col)
+    norm = (schema_dtype or "string").strip().lower()
+    if norm == "int64":
+        return f"TRY_CAST({q} AS BIGINT)"
+    if norm == "float64":
+        return f"TRY_CAST({q} AS DOUBLE)"
+    if norm == "datetime64":
+        return f"TRY_CAST({q} AS TIMESTAMP)"
+    if norm == "bool":
+        return (
+            f"CASE WHEN LOWER(TRIM(CAST({q} AS VARCHAR))) IN ('true','1','yes') THEN true "
+            f"WHEN LOWER(TRIM(CAST({q} AS VARCHAR))) IN ('false','0','no') THEN false ELSE NULL END"
+        )
+    return f"CAST({q} AS VARCHAR)"
+
+
+def _good_cond(col: str, cast_expr: str) -> str:
+    """SQL condition: column is null or cast succeeded."""
+    q = _quote_id(col)
+    return f"({q} IS NULL OR ({cast_expr}) IS NOT NULL)"
+
+
+def _bad_cond(col: str, cast_expr: str) -> str:
+    """SQL condition: column is not null and cast failed."""
+    q = _quote_id(col)
+    return f"({q} IS NOT NULL AND ({cast_expr}) IS NULL)"
 
 
 def process_file(
@@ -68,44 +62,100 @@ def process_file(
     errors_dir: Path,
     log: logging.Logger,
 ) -> None:
-    """Cast schema columns; put failing rows in errors/{stem}_errors.parquet."""
-    df = pd.read_parquet(path)
+    """Cast schema columns via DuckDB TRY_CAST; write good rows to path, bad rows to errors/ (original values)."""
+    proc = psutil.Process()
+    rss_before_mb = proc.memory_info().rss / 1024 / 1024
+
+    conn = duckdb.connect()
+    input_path = path.resolve().as_posix()
+    in_sql = _escape_sql(input_path)
+
+    cur = conn.execute(f"SELECT * FROM read_parquet('{in_sql}') LIMIT 0")
+    file_columns = [d[0] for d in cur.description]
     schema_cols = {c["name"]: c.get("dtype", "string") for c in columns_as_list(schema)}
-    to_cast = [c for c in df.columns if c in schema_cols]
+    to_cast = [c for c in file_columns if c in schema_cols]
+
     if not to_cast:
+        conn.close()
         log.info("%s: no schema columns to cast", path.name)
         return
 
-    error_masks = {}
-    casted = df.copy()
-    for col in to_cast:
-        casted[col], err = cast_column(casted[col], schema_cols[col])
-        error_masks[col] = err
+    # Build SELECT for good output: cast each to_cast column, keep others
+    select_parts = []
+    cast_exprs = {}
+    good_conds = []
+    bad_conds = []
+    for col in file_columns:
+        if col in schema_cols:
+            expr = _cast_expr(col, schema_cols[col])
+            cast_exprs[col] = expr
+            select_parts.append(f"{expr} AS {_quote_id(col)}")
+            good_conds.append(_good_cond(col, expr))
+            bad_conds.append(_bad_cond(col, expr))
+        else:
+            select_parts.append(_quote_id(col))
 
-    row_has_error = pd.concat(error_masks.values(), axis=1).any(axis=1)
+    select_sql = ", ".join(select_parts)
+    good_where = " AND ".join(good_conds)
+    bad_where = " OR ".join(bad_conds)
+
+    # Count bad rows
+    n_bad = conn.execute(
+        f"SELECT COUNT(*) FROM read_parquet('{in_sql}') WHERE {bad_where}"
+    ).fetchone()[0]
+    n_error_rows = n_bad
+
+    # Log cast errors and first 5 bad values for coerce columns
     for col in to_cast:
-        n = error_masks[col].sum()
+        n = conn.execute(
+            f"SELECT COUNT(*) FROM read_parquet('{in_sql}') WHERE {_bad_cond(col, cast_exprs[col])}"
+        ).fetchone()[0]
         if n > 0:
             log.info("%s: column %s - %d cast error(s)", path.name, col, n)
+            if schema_cols.get(col, "").strip().lower() in COERCE_DTYPES:
+                first_5 = conn.execute(
+                    f"SELECT {_quote_id(col)} FROM read_parquet('{in_sql}') "
+                    f"WHERE {_bad_cond(col, cast_exprs[col])} LIMIT 5"
+                ).fetchall()
+                vals = [row[0] for row in first_5]
+                log.info("%s: column %s - first 5 coerced-to-NaN values: %s", path.name, col, vals)
 
-    n_error_rows = row_has_error.sum()
     error_file = errors_dir / f"{path.stem}_errors.parquet"
+    err_path_sql = _escape_sql((errors_dir / f"{path.stem}_errors.parquet").resolve().as_posix())
 
     if n_error_rows == 0:
-        casted.to_parquet(path, index=False)
+        # All rows good: write casted output, remove error file if present
+        conn.execute(f"""
+            COPY (SELECT {select_sql} FROM read_parquet('{in_sql}'))
+            TO '{in_sql}' (FORMAT PARQUET)
+        """)
+        conn.close()
         if error_file.exists():
             error_file.unlink()
             log.info("%s: removed empty error file %s", path.name, error_file.name)
+        rss_after_mb = proc.memory_info().rss / 1024 / 1024
+        log.info("Clean errors %s: memory %.1f -> %.1f MB", path.name, rss_before_mb, rss_after_mb)
         return
 
-    good = casted.loc[~row_has_error]
-    bad = df.loc[row_has_error].copy()
-    good.to_parquet(path, index=False)
+    # Write bad rows (original values) to error sidecar first (while we still have full file)
     errors_dir.mkdir(parents=True, exist_ok=True)
-    bad.to_parquet(error_file, index=False)
+    conn.execute(f"""
+        COPY (SELECT * FROM read_parquet('{in_sql}') WHERE {bad_where})
+        TO '{err_path_sql}' (FORMAT PARQUET)
+    """)
+    # Then write good rows (casted) to path (overwrites input)
+    conn.execute(f"""
+        COPY (SELECT {select_sql} FROM read_parquet('{in_sql}') WHERE {good_where})
+        TO '{in_sql}' (FORMAT PARQUET)
+    """)
+    conn.close()
+
     log.info("%s: %d row(s) flagged to errors/%s", path.name, n_error_rows, error_file.name)
+    rss_after_mb = proc.memory_info().rss / 1024 / 1024
+    log.info("Clean errors %s: memory %.1f -> %.1f MB", path.name, rss_before_mb, rss_after_mb)
 
 
+@monitor_step
 def run_clean_errors(
     clean_dir: Path,
     errors_dir: Path,

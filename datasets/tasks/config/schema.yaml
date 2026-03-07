@@ -100,6 +100,14 @@ columns:
     nullable: true
     fill_strategy: null  # no fill - missing means still running
 
+  _source_file:
+    dtype: string
+    nullable: true
+
+  _ingested_at:
+    dtype: datetime64
+    nullable: true
+
 # Validation thresholds
 validation:
   max_null_rate: 0.30          # fail if any column > 30% null
@@ -129,3 +137,5 @@ column_order:
   - taskstatus
   - starttime
   - endtime
+  - _source_file
+  - _ingested_at
