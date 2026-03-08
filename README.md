@@ -1,6 +1,72 @@
 # Excel Ingestion Pipeline
 
-A 10-step data pipeline that converts Excel files into clean, validated Parquet datasets and a SQLite database. Supports multiple datasets with independent schemas and configurations.
+A 10-step data pipeline that converts Excel files into clean, validated Parquet datasets and exports to SQLite/DuckDB for Power BI. Handles 500K+ row Excel files with low memory usage.
+
+## First-Time Setup
+
+### 1. Clone and Create Virtual Environment
+
+```bash
+cd "C:\Users\quang\CRC Code"
+git clone <repo-url> ExcelIngestion
+cd ExcelIngestion
+
+# Create virtual environment
+python -m venv .venv
+
+# Activate (Windows)
+.venv\Scripts\activate
+
+# Activate (macOS/Linux)
+source .venv/bin/activate
+```
+
+### 2. Install Dependencies
+
+```bash
+pip install -r requirements.txt
+```
+
+Required packages: `pandas`, `pyarrow`, `openpyxl`, `pyyaml`, `pytest`, `duckdb`, `psutil`, `pyodbc`
+
+### 3. Add Your Excel Files
+
+Place Excel files in the dataset's `raw/` folder:
+
+```
+datasets/tasks/raw/           # Task data (*.xlsx)
+datasets/dept_mapping/raw/    # Employee/department mapping (*.xlsx)
+```
+
+### 4. Run the Pipeline
+
+```bash
+# Run tasks dataset (default)
+python run_pipeline.py
+
+# Run dept_mapping dataset
+python run_pipeline.py --dataset dept_mapping
+
+# Dry run (validate configs only)
+python run_pipeline.py --dry-run
+```
+
+### 5. Connect Power BI via DuckDB ODBC
+
+```bash
+# Create DuckDB database for Power BI
+python powerbi/create_duckdb.py
+
+# Test ODBC connection
+python powerbi/setup_odbc.py
+```
+
+In Power BI:
+1. Get Data > Other > ODBC
+2. Use DSN-less connection string:
+   ```
+   Driver={DuckDB Driver};Database=C:\Users\quang\CRC Code\ExcelIngestion\powerbi\warehouse.duckdb;access_mode=READ_ONLY
+   ```
 
 ## Project Structure
 
@@ -246,6 +312,38 @@ python tests/create_fixtures.py
 python tests/create_dept_fixtures.py   # writes datasets/dept_mapping/raw/employee_mapping.xlsx
 ```
 
+## Power BI / DuckDB Integration
+
+The pipeline creates a DuckDB database for Power BI ODBC consumption:
+
+```bash
+python powerbi/create_duckdb.py
+```
+
+**Tables created:**
+| Table | Source | Rows |
+|-------|--------|------|
+| `tasks` | datasets/tasks/analytics/combined.parquet | 6M |
+| `employees` | datasets/dept_mapping/analytics/combined.parquet | 200 |
+| `tasks_with_dept` | JOIN tasks + employees on `LOWER(TRIM(operationby))` | 6M |
+
+**Views created:**
+| View | Description |
+|------|-------------|
+| `v_task_duration` | Tasks with duration_minutes, duration_hours, lifecycle_hours |
+| `v_daily_volume` | Task counts by date (initiated, completed, in_progress, pending) |
+| `v_drawer_summary` | Task counts by drawer with avg duration |
+| `v_carrier_workload` | Task counts by carrier and flowname |
+| `v_missing_status` | Tasks where taskstatus IS NULL |
+| `v_tasks_by_department` | Tasks LEFT JOIN employees |
+| `v_team_workload` | Task counts by team and division |
+
+### DuckDB ODBC Setup (Windows)
+
+1. Download and install [DuckDB ODBC Driver](https://duckdb.org/docs/api/odbc/overview)
+2. Run `python powerbi/setup_odbc.py` to test connection
+3. In Power BI: Get Data > ODBC > paste connection string
+
 ## Troubleshooting
 
 | Error | Solution |
@@ -254,3 +352,6 @@ python tests/create_dept_fixtures.py   # writes datasets/dept_mapping/raw/employ
 | `No Excel files in raw/` | Add .xlsx files to the dataset's raw/ folder |
 | `Validation failed: null_rate` | Increase max_null_rate in schema.yaml |
 | `ModuleNotFoundError` | Activate venv: `.venv\Scripts\activate` |
+| `PyArrow schema mismatch` | Pipeline handles this automatically (all columns coerced to string) |
+| `Power BI shows no tables` | Use DSN-less connection with explicit Database path |
+| `ODBC connection failed` | Install DuckDB ODBC driver; check driver name matches |
