@@ -36,13 +36,18 @@ def _format_time(seconds: float) -> str:
         return f"{mins}m {secs:.1f}s"
 
 
-def coerce_mixed_types(df: pd.DataFrame) -> pd.DataFrame:
-    """Convert object-dtype columns to string to avoid PyArrow mixed-type errors."""
+def coerce_all_to_string(df: pd.DataFrame) -> pd.DataFrame:
+    """Convert ALL columns to string to ensure consistent schema across chunks.
+
+    This prevents PyArrow schema mismatch errors when the same column is inferred
+    as int64 in one chunk but string in another (e.g., taskid with mixed values).
+    Step 04 (clean_errors) will cast to the correct types using schema.yaml.
+    """
     for col in df.columns:
-        if df[col].dtype == "object":
-            df[col] = df[col].apply(
-                lambda x: str(x) if pd.notna(x) and x is not None else pd.NA
-            )
+        df[col] = df[col].apply(
+            lambda x: str(x) if pd.notna(x) and x is not None else None
+        )
+        df[col] = df[col].astype("string")
     return df
 
 
@@ -70,7 +75,7 @@ def convert_excel_to_parquet(
         chunk.append(row)
         if len(chunk) >= chunk_size:
             df = pd.DataFrame(chunk, columns=headers)
-            df = coerce_mixed_types(df)
+            df = coerce_all_to_string(df)
             table = pa.Table.from_pandas(df, preserve_index=False)
             if writer is None:
                 writer = pq.ParquetWriter(str(output_path), table.schema)
@@ -81,7 +86,7 @@ def convert_excel_to_parquet(
 
     if chunk:
         df = pd.DataFrame(chunk, columns=headers)
-        df = coerce_mixed_types(df)
+        df = coerce_all_to_string(df)
         table = pa.Table.from_pandas(df, preserve_index=False)
         if writer is None:
             writer = pq.ParquetWriter(str(output_path), table.schema)
@@ -158,7 +163,7 @@ def run_convert(
         else:
             # .xls: openpyxl doesn't support it, use pandas
             df = pd.read_excel(path, engine="xlrd" if path.suffix.lower() == ".xls" else "openpyxl")
-            df = coerce_mixed_types(df)
+            df = coerce_all_to_string(df)
             df.to_parquet(out_path, index=False)
             rows = len(df)
             chunk_count = 1
