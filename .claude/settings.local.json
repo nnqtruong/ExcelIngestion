@@ -23,7 +23,9 @@
       "Bash(findstr:*)",
       "Bash(tree:*)",
       "Bash(find:*)",
-      "Bash(\"c:/Users/quang/CRC Code/ExcelIngestion/.venv/Scripts/pip.exe\" show psutil)"
+      "Bash(\"c:/Users/quang/CRC Code/ExcelIngestion/.venv/Scripts/pip.exe\" show psutil)",
+      "Bash(\"c:/Users/quang/CRC Code/ExcelIngestion/.venv/Scripts/pip.exe\" show:*)",
+      "Bash(\"c:/Users/quang/CRC Code/ExcelIngestion/.venv/Scripts/python.exe\" -c \"import pandas as pd; df = pd.read_parquet(''c:/Users/quang/CRC Code/ExcelIngestion/datasets/dept_mapping/analytics/combined.parquet''); print(''Columns:'', list(df.columns))\")"
     ],
     "deny": [],
     "ask": []
