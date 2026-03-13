@@ -1,0 +1,77 @@
+# Employee/department mapping schema (e.g. from HR export).
+# All files must conform to this schema after normalization.
+
+columns:
+  userid:
+    dtype: string
+    nullable: false
+    primary_key: true
+
+  id:
+    dtype: string
+    nullable: false
+
+  full_name:
+    dtype: string
+    nullable: false
+
+  title:
+    dtype: string
+    nullable: true
+    null_strings: ["NULL", "null", "N/A", "n/a", ""]
+
+  netwarelogin:
+    dtype: string
+    nullable: true
+
+  email:
+    dtype: string
+    nullable: false
+
+  divisionid:
+    dtype: string
+    nullable: false
+
+  division:
+    dtype: string
+    nullable: false
+
+  division1:
+    dtype: string
+    nullable: true
+
+  teamid:
+    dtype: string
+    nullable: false
+
+  team:
+    dtype: string
+    nullable: false
+
+  _source_file:
+    dtype: string
+    nullable: true
+
+  _ingested_at:
+    dtype: datetime64
+    nullable: true
+
+column_order:
+  - userid
+  - id
+  - full_name
+  - title
+  - netwarelogin
+  - email
+  - divisionid
+  - division
+  - division1
+  - teamid
+  - team
+  - _source_file
+  - _ingested_at
+
+validation:
+  max_null_rate: 1.0   # No null-rate failure (report only)
+  max_duplicate_rate: 0.0
+  min_row_count: 1

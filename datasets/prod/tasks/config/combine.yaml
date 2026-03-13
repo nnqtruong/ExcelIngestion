@@ -1,0 +1,5 @@
+# Step 06 config: combine cleaned Parquet files into one dataset.
+# Primary key is always row_id (auto-generated 1-based integer).
+
+# Output filename under analytics/
+output: combined.parquet

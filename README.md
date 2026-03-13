@@ -31,21 +31,31 @@ Required packages: `pandas`, `pyarrow`, `openpyxl`, `pyyaml`, `pytest`, `duckdb`
 
 ### 3. Add Your Excel Files
 
-Place Excel files in the dataset's `raw/` folder:
+Place Excel files in the dataset's `raw/` folder for the environment you use (default: **dev**):
 
 ```
-datasets/tasks/raw/           # Task data (*.xlsx)
-datasets/dept_mapping/raw/    # Employee/department mapping (*.xlsx)
+datasets/dev/tasks/raw/              # Task data (*.xlsx) — dev
+datasets/dev/dept_mapping/raw/       # Employee/department mapping (*.xlsx) — dev
+datasets/dev/employees_master/raw/   # Unified employee dimension (*.xlsx) — dev
+datasets/prod/tasks/raw/             # Production task data (when using --env prod)
 ```
 
 ### 4. Run the Pipeline
 
 ```bash
-# Run tasks dataset (default)
+# Run tasks dataset (dev, default)
 python run_pipeline.py
+python run_pipeline.py --dataset tasks
 
-# Run dept_mapping dataset
+# Run dept_mapping (dev)
 python run_pipeline.py --dataset dept_mapping
+
+# Run employees_master (unified HR dimension)
+python run_pipeline.py --dataset employees_master
+
+# Production
+python run_pipeline.py --env prod --dataset tasks
+python run_pipeline.py --env prod --dataset dept_mapping
 
 # Dry run (validate configs only)
 python run_pipeline.py --dry-run
@@ -54,39 +64,102 @@ python run_pipeline.py --dry-run
 ### 5. Connect Power BI via DuckDB ODBC
 
 ```bash
-# Create DuckDB database for Power BI
+# Create DuckDB database for Power BI (uses dev by default)
 python powerbi/create_duckdb.py
 
-# Test ODBC connection
+# Prod: set env then create
+set PIPELINE_ENV=prod
+python powerbi/create_duckdb.py
+
+# Test ODBC connection (prints connection string for current env)
 python powerbi/setup_odbc.py
 ```
 
-In Power BI:
-1. Get Data > Other > ODBC
-2. Use DSN-less connection string:
-   ```
-   Driver={DuckDB Driver};Database=C:\Users\quang\CRC Code\ExcelIngestion\powerbi\warehouse.duckdb;access_mode=READ_ONLY
-   ```
+In Power BI, use the connection string for your environment (see [Dev/Prod Environments](#devprod-environments)). Default is **dev** (`powerbi/dev_warehouse.duckdb`).
+
+## Dev/Prod Environments
+
+**Default is always `dev`** so that running the pipeline or Power BI scripts without setting an environment uses development data and files by default.
+
+### Setting the environment
+
+- **Windows (Command Prompt):**  
+  `set PIPELINE_ENV=prod`
+- **Windows (PowerShell):**  
+  `$env:PIPELINE_ENV="prod"`
+- **macOS/Linux:**  
+  `export PIPELINE_ENV=prod`
+
+If `PIPELINE_ENV` is not set, it defaults to `dev`.
+
+### run_pipeline.py `--env` flag
+
+The pipeline uses **`datasets/{env}/{dataset_name}/pipeline.yaml`** when you pass `--dataset`:
+
+```bash
+# Dev (default): datasets/dev/tasks, datasets/dev/dept_mapping
+python run_pipeline.py --dataset tasks
+python run_pipeline.py --dataset dept_mapping
+
+# Prod: datasets/prod/tasks, datasets/prod/dept_mapping
+python run_pipeline.py --env prod --dataset tasks
+python run_pipeline.py --env prod --dataset dept_mapping
+```
+
+`--env` accepts `dev` or `prod` (default: `dev`). The current environment is printed at pipeline start.
+
+### Folder structure (dev vs prod)
+
+| Environment | Dataset path | SQLite warehouse | DuckDB (Power BI) |
+|-------------|---------------|-------------------|-------------------|
+| **dev**     | `datasets/dev/tasks/`, `datasets/dev/dept_mapping/`, `datasets/dev/employees_master/` | `analytics/dev_warehouse.db` | `powerbi/dev_warehouse.duckdb` |
+| **prod**    | `datasets/prod/tasks/`, `datasets/prod/dept_mapping/`, `datasets/prod/employees_master/` | `analytics/warehouse.db` | `powerbi/warehouse.duckdb` |
+
+Place Excel files in the correct env folder, e.g. `datasets/dev/tasks/raw/` or `datasets/prod/tasks/raw/`.
+
+### Power BI connection strings
+
+Use the path that matches the environment you are using:
+
+- **Dev (default):**
+  ```
+  Driver={DuckDB Driver};Database=C:\Users\quang\CRC Code\ExcelIngestion\powerbi\dev_warehouse.duckdb;access_mode=READ_ONLY
+  ```
+- **Prod:**
+  ```
+  Driver={DuckDB Driver};Database=C:\Users\quang\CRC Code\ExcelIngestion\powerbi\warehouse.duckdb;access_mode=READ_ONLY
+  ```
+
+Replace the path with your actual project path. Run `python powerbi/setup_odbc.py` (or `PIPELINE_ENV=prod python powerbi/setup_odbc.py` for prod) to print the exact path and connection string for the current environment.
+
+---
 
 ## Project Structure
 
 ```
 ExcelIngestion/
 ├── datasets/                   # Multi-dataset support
-│   ├── tasks/                  # Task tracking dataset
-│   │   ├── pipeline.yaml       # Dataset marker file
-│   │   ├── config/
-│   │   │   ├── schema.yaml     # Column definitions, types, validation
-│   │   │   ├── value_maps.yaml # Value normalization mappings
-│   │   │   └── combine.yaml    # Output filename
-│   │   ├── raw/                # Input Excel files
-│   │   ├── clean/              # Intermediate Parquet files
-│   │   ├── errors/             # Rows that failed type casting
-│   │   ├── analytics/          # Dataset output (combined.parquet)
-│   │   └── logs/               # pipeline.log, validation_report.json
-│   └── dept_mapping/           # Another dataset (same structure)
+│   ├── dev/                    # Development environment (default)
+│   │   ├── tasks/
+│   │   │   ├── pipeline.yaml
+│   │   │   ├── config/
+│   │   │   ├── raw/            # Dev Excel files
+│   │   │   ├── clean/, errors/, analytics/, logs/
+│   │   ├── dept_mapping/
+│   │   └── employees_master/   # Unified employee dimension (3 sources)
+│   ├── prod/                   # Production environment
+│   │   ├── tasks/
+│   │   └── dept_mapping/
+│   ├── tasks/                  # Legacy: tasks (optional)
+│   └── dept_mapping/           # Legacy: dept_mapping (optional)
 ├── analytics/                  # Shared SQLite warehouse (project root)
-│   └── warehouse.db            # tasks + employees tables; cross-dataset views
+│   ├── dev_warehouse.db        # Dev (when PIPELINE_ENV=dev)
+│   └── warehouse.db            # Prod (when PIPELINE_ENV=prod)
+├── powerbi/                    # DuckDB for Power BI ODBC
+│   ├── dev_warehouse.duckdb    # Dev (default)
+│   ├── warehouse.duckdb        # Prod
+│   ├── create_duckdb.py
+│   └── setup_odbc.py
 ├── lib/                        # Reusable pipeline functions
 │   ├── convert.py
 │   ├── normalize_schema.py
@@ -124,10 +197,10 @@ python run_pipeline.py --dataset tasks
 # Run the employee/department mapping dataset
 python run_pipeline.py --dataset dept_mapping
 
-# Check output (both datasets write to shared warehouse)
-ls analytics/                   # warehouse.db (tasks + employees tables)
-ls datasets/tasks/analytics/    # combined.parquet
-ls datasets/tasks/logs/         # pipeline.log, validation_report.json
+# Check output (dev: both datasets write to shared warehouse)
+ls analytics/                      # dev_warehouse.db (dev) or warehouse.db (prod)
+ls datasets/dev/tasks/analytics/   # combined.parquet
+ls datasets/dev/tasks/logs/        # pipeline.log, validation_report.json
 ```
 
 ## Usage
@@ -135,16 +208,16 @@ ls datasets/tasks/logs/         # pipeline.log, validation_report.json
 ### Run a Dataset Pipeline
 
 ```bash
-# Default: runs datasets/tasks/pipeline.yaml
+# Default: runs datasets/dev/tasks/pipeline.yaml (--env dev)
 python run_pipeline.py
 
-# By dataset name (uses datasets/NAME/pipeline.yaml)
+# By dataset name (uses datasets/--env/NAME/pipeline.yaml)
 python run_pipeline.py --dataset tasks
+python run_pipeline.py --env prod --dataset tasks
 python run_pipeline.py --dataset dept_mapping
 
-# Explicit path to pipeline.yaml
-python run_pipeline.py --pipeline datasets/tasks/pipeline.yaml
-python run_pipeline.py --pipeline datasets/dept_mapping/pipeline.yaml
+# Explicit path to pipeline.yaml (overrides --env)
+python run_pipeline.py --pipeline datasets/prod/tasks/pipeline.yaml
 ```
 
 Both **tasks** and **dept_mapping** write to a **shared SQLite database** at `analytics/warehouse.db` (see [Shared warehouse](#shared-sqlite-warehouse) below). Each dataset uses its own table (`tasks` and `employees` respectively).
@@ -152,6 +225,9 @@ Both **tasks** and **dept_mapping** write to a **shared SQLite database** at `an
 ### Pipeline Options
 
 ```bash
+# Environment: dev (default) or prod
+python run_pipeline.py --env prod --dataset tasks
+
 # Dry run - validate configs without processing
 python run_pipeline.py --dry-run
 
@@ -159,7 +235,7 @@ python run_pipeline.py --dry-run
 python run_pipeline.py --from-step 6
 
 # Combine options
-python run_pipeline.py --pipeline datasets/tasks/pipeline.yaml --from-step 6
+python run_pipeline.py --env prod --dataset tasks --from-step 6
 ```
 
 ### Adding a New Dataset
@@ -197,7 +273,7 @@ python run_pipeline.py --pipeline datasets/my_dataset/pipeline.yaml
 | Step | Script | Description |
 |------|--------|-------------|
 | 01 | convert | Excel → Parquet |
-| 02 | normalize_schema | Lowercase column names, reorder to schema |
+| 02 | normalize_schema | Lowercase column names, apply column_aliases, reorder to schema |
 | 03 | add_missing_columns | Add schema columns missing from source |
 | 04 | clean_errors | Cast types, copy bad rows to `errors/` |
 | 05 | normalize_values | Apply value_maps.yaml transformations |
@@ -212,6 +288,12 @@ python run_pipeline.py --pipeline datasets/my_dataset/pipeline.yaml
 ### schema.yaml
 
 ```yaml
+# Optional: map source column names to canonical names (for multi-schema sources)
+column_aliases:
+  "Employee ID": "employee_id"
+  "2025-2026 Hire": "is_recent_hire"
+  "CRC Employee ID (Workday ID)": "employee_id"
+
 columns:
   taskid:
     dtype: int64           # int64, float64, string, datetime64, bool
@@ -237,6 +319,8 @@ column_order:
   - drawer
   # ... remaining columns
 ```
+
+**Column Aliases**: Use `column_aliases` when combining Excel files with different column headers. The pipeline applies aliases during step 02 (normalize_schema) to map source names to canonical names before further processing.
 
 ### combine.yaml
 
@@ -267,6 +351,7 @@ drawer:
 - **Idempotent**: Rerunning processes everything from scratch.
 - **Multi-dataset**: Each dataset is self-contained with its own config and data directories.
 - **Shared warehouse**: Datasets can write to a single `analytics/warehouse.db` so tables can be joined in SQL and views.
+- **Column aliasing**: Support for combining Excel files with different column headers via `column_aliases` in schema.yaml.
 
 ## Shared SQLite Warehouse
 
@@ -274,6 +359,7 @@ When `pipeline.yaml` sets `sqlite.database: warehouse.db`, step 09 writes to **p
 
 - **tasks** pipeline → table `tasks`
 - **dept_mapping** pipeline → table `employees`
+- **employees_master** pipeline → table `employees_master`
 
 Step 10 creates a **cross-dataset view** when both tables exist:
 
@@ -314,9 +400,14 @@ python tests/create_dept_fixtures.py   # writes datasets/dept_mapping/raw/employ
 
 ## Power BI / DuckDB Integration
 
-The pipeline creates a DuckDB database for Power BI ODBC consumption:
+The pipeline creates a DuckDB database for Power BI ODBC consumption. **Default environment is dev** (creates `powerbi/dev_warehouse.duckdb`). For prod, set `PIPELINE_ENV=prod` before running so it creates/updates `powerbi/warehouse.duckdb`.
 
 ```bash
+# Dev (default)
+python powerbi/create_duckdb.py
+
+# Prod
+set PIPELINE_ENV=prod    # Windows
 python powerbi/create_duckdb.py
 ```
 
@@ -341,8 +432,8 @@ python powerbi/create_duckdb.py
 ### DuckDB ODBC Setup (Windows)
 
 1. Download and install [DuckDB ODBC Driver](https://duckdb.org/docs/api/odbc/overview)
-2. Run `python powerbi/setup_odbc.py` to test connection
-3. In Power BI: Get Data > ODBC > paste connection string
+2. Run `python powerbi/setup_odbc.py` (dev) or `set PIPELINE_ENV=prod` then `python powerbi/setup_odbc.py` to print the connection string for that environment
+3. In Power BI: Get Data > ODBC > paste the connection string (see [Dev/Prod Environments](#devprod-environments) for dev vs prod paths)
 
 ## Troubleshooting
 

@@ -25,7 +25,15 @@
       "Bash(find:*)",
       "Bash(\"c:/Users/quang/CRC Code/ExcelIngestion/.venv/Scripts/pip.exe\" show psutil)",
       "Bash(\"c:/Users/quang/CRC Code/ExcelIngestion/.venv/Scripts/pip.exe\" show:*)",
-      "Bash(\"c:/Users/quang/CRC Code/ExcelIngestion/.venv/Scripts/python.exe\" -c \"import pandas as pd; df = pd.read_parquet(''c:/Users/quang/CRC Code/ExcelIngestion/datasets/dept_mapping/analytics/combined.parquet''); print(''Columns:'', list(df.columns))\")"
+      "Bash(\"c:/Users/quang/CRC Code/ExcelIngestion/.venv/Scripts/python.exe\" -c \"import pandas as pd; df = pd.read_parquet(''c:/Users/quang/CRC Code/ExcelIngestion/datasets/dept_mapping/analytics/combined.parquet''); print(''Columns:'', list(df.columns))\")",
+      "Bash(rm:*)",
+      "Bash(\"c:/Users/quang/CRC Code/ExcelIngestion/.venv/Scripts/python.exe\" -m dbt debug)",
+      "Bash(\".venv/Scripts/pip.exe\" list)",
+      "Bash(\"c:/Users/quang/CRC Code/ExcelIngestion/.venv/Scripts/dbt.exe\" run)",
+      "Bash(\"c:/Users/quang/CRC Code/ExcelIngestion/.venv/Scripts/dbt.exe\" test)",
+      "Bash(\"c:/Users/quang/CRC Code/ExcelIngestion/.venv/Scripts/python.exe\" tests/compare_dbt_vs_pipeline.py)",
+      "Bash(dir:*)",
+      "Bash(\"c:/Users/quang/CRC Code/ExcelIngestion/.venv/Scripts/python.exe\" -c \"\nimport pandas as pd\n\nfiles = [\n    (''Brokerage'', ''c:/Users/quang/CRC Code/ExcelIngestion/new_datasets/Brokerage.xlsx''),\n    (''Select'', ''c:/Users/quang/CRC Code/ExcelIngestion/new_datasets/Select.xlsx''),\n    (''Genpact'', ''c:/Users/quang/CRC Code/ExcelIngestion/new_datasets/Genpact.xlsx''),\n]\n\nfor name, path in files:\n    df = pd.read_excel(path)\n    print(f''=== {name} ({len(df)} rows, {len(df.columns)} columns) ==='')\n    print(''Columns:'', list(df.columns))\n    print()\n\")"
     ],
     "deny": [],
     "ask": []

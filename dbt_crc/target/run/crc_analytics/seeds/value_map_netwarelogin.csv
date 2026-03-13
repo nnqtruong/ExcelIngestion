@@ -1,0 +1,11 @@
+
+    
+    
+    truncate table "dev_warehouse"."main"."value_map_netwarelogin";
+    -- dbt seed --
+    
+          COPY "dev_warehouse"."main"."value_map_netwarelogin" FROM 'C:\Users\quang\CRC Code\ExcelIngestion\dbt_crc\seeds\value_map_netwarelogin.csv' (FORMAT CSV, HEADER TRUE, DELIMITER ',')
+        
+
+;
+  

@@ -26,3 +26,11 @@ def columns_as_list(schema: dict) -> list[dict]:
 def get_column_order(schema: dict) -> list[str]:
     """Return desired column order from schema."""
     return [c["name"] for c in columns_as_list(schema)]
+
+
+def get_column_aliases(schema: dict) -> dict[str, str]:
+    """Return column alias mapping from schema, or empty dict if not defined."""
+    raw = schema.get("column_aliases") or {}
+    if not isinstance(raw, dict):
+        return {}
+    return {str(k): str(v) for k, v in raw.items()}

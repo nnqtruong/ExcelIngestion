@@ -1,4 +1,4 @@
-"""Orchestrator: run steps 01–10 in sequence. Reads dataset root from datasets/tasks/pipeline.yaml."""
+"""Orchestrator: run steps 01–10 in sequence. Uses datasets/{env}/{dataset}/pipeline.yaml (--env dev|prod, --dataset NAME) or --pipeline PATH."""
 import argparse
 import logging
 import os
@@ -11,7 +11,7 @@ import yaml
 ROOT = Path(__file__).resolve().parent
 SCRIPTS_DIR = ROOT / "scripts"
 
-DEFAULT_PIPELINE = "datasets/tasks/pipeline.yaml"
+DEFAULT_DATASET = "tasks"
 
 STEPS = [
     (1, "01_convert", SCRIPTS_DIR / "01_convert.py"),
@@ -113,15 +113,17 @@ def run_step(
     name: str,
     script_path: Path,
     dataset_root: Path,
+    pipeline_env: str,
     log: logging.Logger,
 ) -> bool:
-    """Run one step via subprocess with PIPELINE_DATASET_ROOT set. Return True if exit code 0."""
+    """Run one step via subprocess with PIPELINE_DATASET_ROOT and PIPELINE_ENV set. Return True if exit code 0."""
     if not script_path.exists():
         log.error("Script not found: %s", script_path)
         return False
     log.info("Running step %d: %s", step_num, name)
     env = os.environ.copy()
     env["PIPELINE_DATASET_ROOT"] = str(dataset_root)
+    env["PIPELINE_ENV"] = pipeline_env
     try:
         # Stream output in real-time instead of capturing
         result = subprocess.run(
@@ -145,16 +147,23 @@ def run_step(
 def main() -> int:
     parser = argparse.ArgumentParser(description="Run pipeline steps 01–10 in sequence.")
     parser.add_argument(
+        "--env",
+        choices=("dev", "prod"),
+        default="dev",
+        metavar="ENV",
+        help="Environment for dataset path (default: dev). Uses datasets/ENV/NAME/pipeline.yaml with --dataset.",
+    )
+    parser.add_argument(
         "--pipeline",
         default=None,
         metavar="PATH",
-        help=f"Path to pipeline.yaml (default if --dataset not set: {DEFAULT_PIPELINE}).",
+        help="Path to pipeline.yaml (overrides --env and --dataset).",
     )
     parser.add_argument(
         "--dataset",
         default=None,
         metavar="NAME",
-        help="Dataset name (e.g. tasks, dept_mapping). Uses datasets/NAME/pipeline.yaml.",
+        help="Dataset name (e.g. tasks, dept_mapping). Uses datasets/--env/NAME/pipeline.yaml.",
     )
     parser.add_argument(
         "--dry-run",
@@ -175,12 +184,12 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    if args.dataset:
-        pipeline_path = ROOT / "datasets" / args.dataset / "pipeline.yaml"
-    elif args.pipeline:
+    if args.pipeline:
         pipeline_path = ROOT / args.pipeline
+    elif args.dataset:
+        pipeline_path = ROOT / "datasets" / args.env / args.dataset / "pipeline.yaml"
     else:
-        pipeline_path = ROOT / DEFAULT_PIPELINE
+        pipeline_path = ROOT / "datasets" / args.env / DEFAULT_DATASET / "pipeline.yaml"
     try:
         dataset_root = get_dataset_root(pipeline_path)
     except FileNotFoundError as e:
@@ -192,6 +201,8 @@ def main() -> int:
     if args.verbose:
         log.setLevel(logging.DEBUG)
         logging.getLogger().setLevel(logging.DEBUG)
+
+    log.info("Environment: %s", args.env)
 
     if args.dry_run:
         log.info("Dry run: validating config and inputs (no writes).")
@@ -213,7 +224,7 @@ def main() -> int:
     log.info("Dataset root: %s", dataset_root)
     log.info("Starting pipeline from step %d", args.from_step)
     for step_num, name, script_path in steps_to_run:
-        if not run_step(step_num, name, script_path, dataset_root, log):
+        if not run_step(step_num, name, script_path, dataset_root, args.env, log):
             log.error("Pipeline stopped: step %d (%s) failed.", step_num, name)
             remove_analytics_output(dataset_root, log)
             return 1

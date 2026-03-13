@@ -6,7 +6,7 @@ from pathlib import Path
 import duckdb
 import psutil
 
-from lib.schema import get_column_order, load_schema
+from lib.schema import get_column_aliases, get_column_order, load_schema
 from lib.logging_util import monitor_step
 
 
@@ -41,15 +41,37 @@ def process_file(path: Path, schema: dict, log: logging.Logger | None = None) ->
     cur = conn.execute(f"SELECT * FROM read_parquet('{in_sql}') LIMIT 0")
     original_columns = [d[0] for d in cur.description]
 
-    rename_map = {c: to_snake_case(c) for c in original_columns}
+    aliases = get_column_aliases(schema)
+    rename_map: dict[str, str] = {}
+    for c in original_columns:
+        snake = to_snake_case(c)
+        if c in aliases:
+            rename_map[c] = aliases[c]
+        elif snake in aliases:
+            rename_map[c] = aliases[snake]
+        else:
+            rename_map[c] = snake
+
+    finals_present = set(rename_map.values())
     order = get_column_order(schema)
-    ordered = [c for c in order if c in rename_map.values()]
-    extra = [c for c in rename_map.values() if c not in order]
+    ordered = [c for c in order if c in finals_present]
+    seen = set(ordered)
+    extra: list[str] = []
+    for c in original_columns:
+        f = rename_map[c]
+        if f not in seen:
+            extra.append(f)
+            seen.add(f)
     output_cols = ordered + extra
-    reverse_rename = {v: k for k, v in rename_map.items()}
+
+    def _original_for_final(final: str) -> str:
+        for orig, fn in rename_map.items():
+            if fn == final:
+                return orig
+        raise KeyError(final)
 
     select_parts = [
-        f'{_quote_id(reverse_rename[col])} AS {_quote_id(col)}'
+        f'{_quote_id(_original_for_final(col))} AS {_quote_id(col)}'
         for col in output_cols
     ]
     select_sql = ", ".join(select_parts)

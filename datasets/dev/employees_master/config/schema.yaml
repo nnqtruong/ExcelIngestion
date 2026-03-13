@@ -1,0 +1,133 @@
+# employees_master — unified HR + Genpact schema (column_aliases unify source headers).
+# source_system is set at combine from _source_file basename.
+
+column_aliases:
+  # Brokerage/Select (display names → canonical)
+  "Employee ID": "employee_id"
+  "Name": "name"
+  "Supervisory Organization": "supervisory_organization"
+  "Job Profile": "job_profile"
+  "Cost Center": "cost_center"
+  "Hire Date": "hire_date"
+  "2025-2026 Hire": "is_recent_hire"
+  "2025-26 Hire": "is_recent_hire"
+  "Location": "location"
+  "Term Date": "term_date"
+  "2025-2026 Term": "is_recent_term"
+  "2025-26 Term": "is_recent_term"
+  "Term Reason": "term_reason"
+  "Role Disposition": "role_disposition"
+  "Combined Hierarchy (Terms and New Hires)": "combined_hierarchy"
+  "Brokerage Production team": "team_or_office"
+  "Office": "team_or_office"
+  "Addressable Population?": "addressable_population"
+  # Genpact
+  "CRC Employee ID (Workday ID)": "employee_id"
+  "CRC Email Address": "email"
+  "Employee Name": "name"
+  "CRC Name": "genpact_crc_name"
+  "Genpact ID": "genpact_id"
+  "Phase": "genpact_phase"
+  "2026 Mapping?": "genpact_mapping"
+
+columns:
+  employee_id:
+    dtype: string
+    nullable: false
+  name:
+    dtype: string
+    nullable: false
+  supervisory_organization:
+    dtype: string
+    nullable: true
+  job_profile:
+    dtype: string
+    nullable: true
+  cost_center:
+    dtype: string
+    nullable: true
+  hire_date:
+    dtype: datetime64
+    nullable: true
+  is_recent_hire:
+    dtype: string
+    nullable: true
+  location:
+    dtype: string
+    nullable: true
+  term_date:
+    dtype: datetime64
+    nullable: true
+  is_recent_term:
+    dtype: string
+    nullable: true
+  term_reason:
+    dtype: string
+    nullable: true
+  role_disposition:
+    dtype: string
+    nullable: true
+  combined_hierarchy:
+    dtype: string
+    nullable: true
+  team_or_office:
+    dtype: string
+    nullable: true
+  addressable_population:
+    dtype: string
+    nullable: true
+  email:
+    dtype: string
+    nullable: true
+  genpact_id:
+    dtype: string
+    nullable: true
+  genpact_phase:
+    dtype: string
+    nullable: true
+  genpact_crc_name:
+    dtype: string
+    nullable: true
+  genpact_mapping:
+    dtype: string
+    nullable: true
+  source_system:
+    dtype: string
+    nullable: false
+  _source_file:
+    dtype: string
+    nullable: true
+  _ingested_at:
+    dtype: datetime64
+    nullable: true
+
+column_order:
+  - employee_id
+  - name
+  - supervisory_organization
+  - job_profile
+  - cost_center
+  - hire_date
+  - is_recent_hire
+  - location
+  - term_date
+  - is_recent_term
+  - term_reason
+  - role_disposition
+  - combined_hierarchy
+  - team_or_office
+  - addressable_population
+  - email
+  - genpact_id
+  - genpact_phase
+  - genpact_crc_name
+  - genpact_mapping
+  - source_system
+  - _source_file
+  - _ingested_at
+
+validation:
+  # Combined Brokerage+Select+Genpact: many columns are source-specific → high null % expected
+  max_null_rate: 0.95
+  max_duplicate_rate: 1.0
+  min_row_count: 1

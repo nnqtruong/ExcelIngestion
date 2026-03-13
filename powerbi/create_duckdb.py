@@ -1,4 +1,7 @@
-"""Create DuckDB database from Parquet files for Power BI ODBC consumption."""
+"""Create DuckDB database from Parquet files for Power BI ODBC consumption.
+Reads PIPELINE_ENV (default: dev). Dev uses dev_warehouse.duckdb; prod uses warehouse.duckdb.
+Parquet paths: datasets/{env}/tasks/analytics/ and datasets/{env}/dept_mapping/analytics/."""
+import os
 import sys
 from pathlib import Path
 
@@ -6,9 +9,21 @@ import duckdb
 
 # Resolve paths relative to this script's parent (project root)
 ROOT = Path(__file__).resolve().parent.parent
-DUCKDB_PATH = ROOT / "powerbi" / "warehouse.duckdb"
-TASKS_PARQUET = ROOT / "datasets" / "tasks" / "analytics" / "combined.parquet"
-DEPT_PARQUET = ROOT / "datasets" / "dept_mapping" / "analytics" / "combined.parquet"
+
+
+def get_env() -> str:
+    """Return PIPELINE_ENV (default: dev)."""
+    return os.environ.get("PIPELINE_ENV") or "dev"
+
+
+def _paths_for_env(env: str) -> tuple[Path, Path, Path]:
+    """Return (DUCKDB_PATH, TASKS_PARQUET, DEPT_PARQUET) for the given environment."""
+    powerbi_dir = ROOT / "powerbi"
+    db_name = "dev_warehouse.duckdb" if env == "dev" else "warehouse.duckdb"
+    duckdb_path = powerbi_dir / db_name
+    tasks_parquet = ROOT / "datasets" / env / "tasks" / "analytics" / "combined.parquet"
+    dept_parquet = ROOT / "datasets" / env / "dept_mapping" / "analytics" / "combined.parquet"
+    return duckdb_path, tasks_parquet, dept_parquet
 
 
 def _escape_sql(s: str) -> str:
@@ -17,27 +32,34 @@ def _escape_sql(s: str) -> str:
 
 def create_database() -> None:
     """Delete and recreate DuckDB database with tables and views."""
+    env = get_env()
+    duckdb_path, tasks_parquet, dept_parquet = _paths_for_env(env)
+    print(f"Environment: {env}")
+    print(f"Database: {duckdb_path}")
+    print(f"Tasks parquet: {tasks_parquet}")
+    print(f"Dept parquet: {dept_parquet}\n")
+
     # Delete old database
-    if DUCKDB_PATH.exists():
-        DUCKDB_PATH.unlink()
-        print(f"Deleted existing: {DUCKDB_PATH}")
+    if duckdb_path.exists():
+        duckdb_path.unlink()
+        print(f"Deleted existing: {duckdb_path}")
 
-    DUCKDB_PATH.parent.mkdir(parents=True, exist_ok=True)
+    duckdb_path.parent.mkdir(parents=True, exist_ok=True)
 
-    conn = duckdb.connect(str(DUCKDB_PATH))
+    conn = duckdb.connect(str(duckdb_path))
 
     # Load tasks table
-    if TASKS_PARQUET.exists():
-        tasks_sql = _escape_sql(TASKS_PARQUET.as_posix())
+    if tasks_parquet.exists():
+        tasks_sql = _escape_sql(tasks_parquet.as_posix())
         conn.execute(f"CREATE TABLE tasks AS SELECT * FROM read_parquet('{tasks_sql}')")
         count = conn.execute("SELECT COUNT(*) FROM tasks").fetchone()[0]
         print(f"Loaded tasks: {count:,} rows")
     else:
-        print(f"WARNING: Tasks parquet not found: {TASKS_PARQUET}")
+        print(f"WARNING: Tasks parquet not found: {tasks_parquet}")
 
     # Load employees table (if exists)
-    if DEPT_PARQUET.exists():
-        dept_sql = _escape_sql(DEPT_PARQUET.as_posix())
+    if dept_parquet.exists():
+        dept_sql = _escape_sql(dept_parquet.as_posix())
         conn.execute(f"CREATE TABLE employees AS SELECT * FROM read_parquet('{dept_sql}')")
         count = conn.execute("SELECT COUNT(*) FROM employees").fetchone()[0]
         print(f"Loaded employees: {count:,} rows")
@@ -66,7 +88,7 @@ def create_database() -> None:
         count = conn.execute("SELECT COUNT(*) FROM tasks_with_dept").fetchone()[0]
         print(f"Loaded tasks_with_dept: {count:,} rows")
     else:
-        print(f"INFO: Dept mapping parquet not found (optional): {DEPT_PARQUET}")
+        print(f"INFO: Dept mapping parquet not found (optional): {dept_parquet}")
 
     # Create analytical views
     print("\nCreating views...")
@@ -187,16 +209,18 @@ def create_database() -> None:
 
     # File size
     conn.close()
-    size_mb = DUCKDB_PATH.stat().st_size / (1024 * 1024)
-    print(f"\nDatabase: {DUCKDB_PATH}")
+    size_mb = duckdb_path.stat().st_size / (1024 * 1024)
+    print(f"\nDatabase: {duckdb_path}")
     print(f"Size: {size_mb:.1f} MB")
 
 
 if __name__ == "__main__":
     try:
         create_database()
+        env = get_env()
+        duckdb_path, _, _ = _paths_for_env(env)
         print("\nDone. Connect Power BI ODBC to:")
-        print(f"  {DUCKDB_PATH}")
+        print(f"  {duckdb_path}")
     except Exception as e:
         print(f"ERROR: {e}", file=sys.stderr)
         sys.exit(1)

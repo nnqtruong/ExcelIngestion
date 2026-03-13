@@ -1,0 +1,24 @@
+# Dataset: employees_master (prod)
+# Environment path: datasets/prod/employees_master
+
+name: employees_master
+environment: prod
+description: "Unified employee dimension from Brokerage, Select, and Genpact sources"
+
+steps:
+  - 01_convert
+  - 02_normalize_schema
+  - 03_add_missing_columns
+  - 04_clean_errors
+  - 05_normalize_values
+  - 06_combine_datasets
+  - 07_handle_nulls
+  - 08_validate
+
+sqlite:
+  database: warehouse.db
+  table: employees_master
+  indexes:
+    - employee_id
+    - source_system
+    - email

@@ -1,4 +1,5 @@
 """Load combine.yaml, pipeline.yaml, and resolve paths."""
+import os
 from pathlib import Path
 
 import yaml
@@ -32,11 +33,13 @@ def get_sqlite_table_name(dataset_root: Path) -> str:
 
 
 def get_sqlite_db_path(dataset_root: Path) -> Path:
-    """Path to SQLite DB. Shared warehouse at ROOT/analytics/warehouse.db; else dataset analytics/."""
+    """Path to SQLite DB. Uses PIPELINE_ENV (default: dev). Dev: analytics/dev_warehouse.db, prod: analytics/warehouse.db. Shared warehouse at ROOT/analytics/; else dataset_root/analytics/."""
     cfg = get_sqlite_config(dataset_root)
     db_name = cfg["database"]
+    env = os.environ.get("PIPELINE_ENV") or "dev"
     if db_name == "warehouse.db":
-        return ROOT / "analytics" / db_name
+        shared_name = "dev_warehouse.db" if env == "dev" else "warehouse.db"
+        return ROOT / "analytics" / shared_name
     return dataset_root / "analytics" / db_name
 
 

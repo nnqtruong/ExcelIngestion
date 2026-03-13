@@ -1,0 +1,33 @@
+# Dataset: employees_master (dev)
+# Environment path: datasets/dev/employees_master
+#
+# This dataset combines 3 Excel files with DIFFERENT schemas:
+# - Brokerage.xlsx (15 columns)
+# - Select.xlsx (15 columns)
+# - Genpact.xlsx (7 columns)
+#
+# Column aliasing in schema.yaml maps different source column names
+# to unified column names (e.g., "2025-2026 Hire" → "is_recent_hire")
+
+name: employees_master
+environment: dev
+description: "Unified employee dimension from Brokerage, Select, and Genpact sources"
+
+# Use all steps — column aliasing handled in step 02
+steps:
+  - 01_convert
+  - 02_normalize_schema
+  - 03_add_missing_columns
+  - 04_clean_errors
+  - 05_normalize_values
+  - 06_combine_datasets
+  - 07_handle_nulls
+  - 08_validate
+
+sqlite:
+  database: warehouse.db
+  table: employees_master
+  indexes:
+    - employee_id
+    - source_system
+    - email

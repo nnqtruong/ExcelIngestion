@@ -1,0 +1,72 @@
+version: 2
+models:
+  - name: mart_tasks_enriched
+    description: "Tasks enriched with employee/department from three joins (assignedto, taskfrom, operationby). Includes duration and lifecycle computed columns."
+    columns:
+      - name: row_id
+        description: "Surrogate key from stg_tasks."
+        tests:
+          - not_null
+          - unique
+      - name: duration_hours
+        description: "Duration (endtime - starttime) in hours; null when start/end missing."
+        tests:
+          - dbt_utils.expression_is_true:
+              arguments:
+                expression: ">= 0"
+              config:
+                where: "duration_hours is not null"
+
+  - name: mart_daily_volume
+    description: "Daily task counts by task_date: total, completed, in progress."
+    columns:
+      - name: task_date
+        description: "Date (from dateinitiated)."
+        tests:
+          - not_null
+          - unique
+      - name: total_tasks
+        description: "Total tasks initiated on that date."
+        tests:
+          - not_null
+      - name: completed_tasks
+        description: "Count with taskstatus = 'Completed'."
+      - name: in_progress_tasks
+        description: "Count with taskstatus = 'In Progress'."
+
+  - name: mart_drawer_performance
+    description: "Per-drawer metrics: task count, avg duration, completion rate."
+    columns:
+      - name: drawer
+        description: "Office/department code."
+        tests:
+          - not_null
+          - unique
+      - name: task_count
+        description: "Total tasks."
+        tests:
+          - not_null
+      - name: avg_duration_hours
+        description: "Average duration (starttime to endtime) in hours."
+      - name: completion_rate
+        description: "Percentage of tasks completed (0-100)."
+
+  - name: mart_team_workload
+    description: "Per assigned team/division: task count, avg lifecycle, open tasks."
+    columns:
+      - name: assigned_team
+        description: "Team from employee lookup."
+        tests:
+          - not_null
+      - name: assigned_division
+        description: "Division from employee lookup."
+        tests:
+          - not_null
+      - name: task_count
+        description: "Total tasks assigned to this team."
+        tests:
+          - not_null
+      - name: avg_lifecycle_hours
+        description: "Average hours from dateinitiated to dateended."
+      - name: open_tasks
+        description: "Tasks not yet completed."

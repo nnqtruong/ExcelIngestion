@@ -1,0 +1,2 @@
+primary_key: row_id
+output: combined.parquet

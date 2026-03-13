@@ -1,0 +1,96 @@
+version: 2
+models:
+  - name: stg_employees
+    description: "Staging view for employee/department mapping from raw employees Parquet. Normalizes title null literals, trims full_name, and normalizes netwarelogin domain casing (e.g. crc\\ -> CRC\\)."
+    columns:
+      - name: userid
+        description: "Primary key; user identifier (e.g. ablain)."
+        tests:
+          - not_null
+          - unique
+      - name: id
+        description: "Alternate employee ID."
+      - name: full_name
+        description: "Employee full name (whitespace trimmed)."
+      - name: title
+        description: "Job title; literal 'NULL'/'N/A' etc. converted to SQL NULL."
+      - name: netwarelogin
+        description: "Login with domain (e.g. CRC\\ablain); domain part normalized to uppercase."
+      - name: email
+        description: "Employee email address."
+        tests:
+          - not_null
+      - name: divisionid
+        description: "Division identifier (e.g. CRCAL1)."
+      - name: division
+        description: "Division name (e.g. CRC - Birmingham)."
+      - name: division1
+        description: "Parent division when applicable."
+      - name: teamid
+        description: "Team identifier."
+      - name: team
+        description: "Team name."
+      - name: _source_file
+        description: "Source Excel filename from ingestion."
+      - name: _ingested_at
+        description: "Ingestion timestamp."
+
+  - name: stg_tasks
+    description: "Staging view for task data from raw tasks Parquet. Normalizes taskstatus and flowname via value-map seeds, trims/lowers join keys (assignedto, taskfrom, operationby), and collapses multiple spaces in drawer."
+    columns:
+      - name: row_id
+        description: "Surrogate key (1-based integer from pipeline step 06)."
+        tests:
+          - not_null
+          - unique
+      - name: taskid
+        description: "Business task ID (not unique across snapshots)."
+      - name: drawer
+        description: "Office/department code; multiple spaces normalized to single space."
+      - name: policynumber
+        description: "Policy number."
+      - name: filename
+        description: "Client name (filename)."
+      - name: filenumber
+        description: "File number."
+      - name: effectivedate
+        description: "Effective date."
+      - name: carrier
+        description: "Insurance carrier."
+      - name: acctexec
+        description: "Account executive."
+      - name: taskdescription
+        description: "Task description."
+      - name: assignedto
+        description: "User ID (trimmed and lowercased for joins)."
+      - name: taskfrom
+        description: "User ID (trimmed and lowercased for joins)."
+      - name: operationby
+        description: "User ID (trimmed and lowercased for joins)."
+      - name: flowname
+        description: "Flow name; normalized via value_map_flowname (e.g. UW Renewal)."
+      - name: stepname
+        description: "Step name."
+      - name: sentto
+        description: "Sent to."
+      - name: dateavailable
+        description: "Date available (no fill; null = not yet available)."
+      - name: dateinitiated
+        description: "Date initiated."
+      - name: dateended
+        description: "Date ended (no fill; null = still open)."
+      - name: taskstatus
+        description: "Status; normalized via value_map_taskstatus. Nulls allowed (many source files lack this column)."
+        tests:
+          - accepted_values:
+              arguments:
+                values: ["Completed", "In Progress", "Pending", "Cancelled"]
+                quote: true
+      - name: starttime
+        description: "Start time."
+      - name: endtime
+        description: "End time (no fill; null = still running)."
+      - name: _source_file
+        description: "Source Excel filename from ingestion."
+      - name: _ingested_at
+        description: "Ingestion timestamp."

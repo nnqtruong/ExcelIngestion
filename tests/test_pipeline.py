@@ -6,10 +6,10 @@ import pytest
 from pathlib import Path
 
 ROOT = Path(__file__).parent.parent
-CONFIG = ROOT / "datasets" / "tasks" / "config"
+CONFIG = ROOT / "datasets" / "dev" / "tasks" / "config"
 FIXTURES = Path(__file__).parent / "fixtures"
 ANALYTICS = ROOT / "analytics"
-DB_PATH = ANALYTICS / "warehouse.db"
+DB_PATH = ANALYTICS / "dev_warehouse.db"
 
 
 @pytest.fixture
@@ -189,7 +189,7 @@ class TestSQLiteExport:
     @pytest.fixture
     def parquet_df(self):
         """Fixture to load combined parquet if it exists (tasks dataset)."""
-        parquet_path = ROOT / "datasets" / "tasks" / "analytics" / "combined.parquet"
+        parquet_path = ROOT / "datasets" / "dev" / "tasks" / "analytics" / "combined.parquet"
         if not parquet_path.exists():
             pytest.skip("Combined parquet not found - run pipeline first")
         return pd.read_parquet(parquet_path)

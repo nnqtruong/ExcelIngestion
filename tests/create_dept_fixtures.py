@@ -2,19 +2,22 @@
 Generate one Excel fixture for dept_mapping pipeline: employee_mapping.xlsx with 200 rows
 of realistic CRC employee mapping data and injected data quality issues.
 
-Run: python tests/create_dept_fixtures.py
+Run:
+  python tests/create_dept_fixtures.py                              # dev (default)
+  python tests/create_dept_fixtures.py --output-dir datasets/dev/dept_mapping/raw
+  python tests/create_dept_fixtures.py --output-dir datasets/prod/dept_mapping/raw
 """
+import argparse
 import random
+import sys
 from pathlib import Path
 
 import pandas as pd
 
 random.seed(42)
 
-# Output path
 ROOT = Path(__file__).resolve().parent.parent
-OUT_PATH = ROOT / "datasets" / "dept_mapping" / "raw" / "employee_mapping.xlsx"
-OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
+DEFAULT_RAW_DIR = ROOT / "datasets" / "dev" / "dept_mapping" / "raw"
 
 # Column names exactly as source (ID has trailing space in header)
 COLUMNS = [
@@ -80,7 +83,22 @@ def userid_from_name(first: str, last: str) -> str:
     return (first[0] + last).lower()
 
 
-def main() -> None:
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        description="Generate employee_mapping.xlsx fixture for dept_mapping pipeline.",
+    )
+    parser.add_argument(
+        "--output-dir",
+        type=Path,
+        default=DEFAULT_RAW_DIR,
+        help=f"Directory to write Excel file (default: {DEFAULT_RAW_DIR})",
+    )
+    args = parser.parse_args()
+
+    raw_dir = args.output_dir.resolve()
+    raw_dir.mkdir(parents=True, exist_ok=True)
+    out_path = raw_dir / "employee_mapping.xlsx"
+
     # Build 198 unique people, then add 2 duplicate userid rows (200 total)
     seen_userids: set[str] = set()
     rows: list[dict] = []
@@ -196,10 +214,10 @@ def main() -> None:
     }
 
     # Write Excel (column "ID " must have trailing space in header)
-    df.to_excel(OUT_PATH, index=False, sheet_name="Sheet1", engine="openpyxl")
+    df.to_excel(out_path, index=False, sheet_name="Sheet1", engine="openpyxl")
 
     # Summary
-    print("Generated:", OUT_PATH)
+    print("Generated:", out_path)
     print("Total rows:", len(df))
     print("Columns:", list(df.columns))
     print("Column 'ID ' has trailing space:", df.columns[1] == "ID ")
@@ -208,7 +226,7 @@ def main() -> None:
         print(f"  {label}: {count}")
 
     # Verify read-back
-    df2 = pd.read_excel(OUT_PATH, sheet_name="Sheet1", engine="openpyxl")
+    df2 = pd.read_excel(out_path, sheet_name="Sheet1", engine="openpyxl")
     assert list(df2.columns) == list(df.columns), "Column names mismatch on read"
     assert len(df2) == 200, f"Expected 200 rows, got {len(df2)}"
     # Check duplicate userids
@@ -216,7 +234,8 @@ def main() -> None:
     dup_userids = df2.loc[dup, "userid"].unique()
     assert len(dup_userids) == 2, f"Expected 2 duplicated userids, got {len(dup_userids)}"
     print("\nRead-back OK: 200 rows, columns match, 2 duplicated userids verified.")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

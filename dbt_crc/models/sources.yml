@@ -1,0 +1,15 @@
+# Raw Parquet sources (dbt-duckdb external_location).
+# Paths use PIPELINE_ENV (default: dev) to resolve datasets/{env}/.../combined.parquet.
+version: 2
+sources:
+  - name: raw
+    description: "Pipeline output Parquet files by environment (dev/prod)."
+    tables:
+      - name: tasks
+        description: "Task data from datasets/{env}/tasks/analytics/combined.parquet"
+        meta:
+          external_location: "../datasets/{{ env_var('PIPELINE_ENV', 'dev') }}/tasks/analytics/combined.parquet"
+      - name: employees
+        description: "Employee/department mapping from datasets/{env}/dept_mapping/analytics/combined.parquet"
+        meta:
+          external_location: "../datasets/{{ env_var('PIPELINE_ENV', 'dev') }}/dept_mapping/analytics/combined.parquet"

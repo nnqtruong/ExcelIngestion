@@ -1,18 +1,37 @@
 """
 Power BI ODBC setup: print warehouse path and test DuckDB ODBC connection.
 
+Reads PIPELINE_ENV (default: dev). Dev uses dev_warehouse.duckdb; prod uses warehouse.duckdb.
 Use the printed absolute path in your Windows ODBC DSN (Database parameter)
 so Power BI connects to the file warehouse, not an in-memory database.
 """
+import os
 from pathlib import Path
 
-# Resolve absolute path to warehouse.duckdb (same folder as this script)
-db_path = (Path(__file__).resolve().parent / "warehouse.duckdb").resolve()
+POWERBI_DIR = Path(__file__).resolve().parent
+
+
+def get_env() -> str:
+    """Return PIPELINE_ENV (default: dev)."""
+    return os.environ.get("PIPELINE_ENV") or "dev"
+
+
+def get_db_path(env: str) -> Path:
+    """Return path to DuckDB file for the given environment."""
+    name = "dev_warehouse.duckdb" if env == "dev" else "warehouse.duckdb"
+    return (POWERBI_DIR / name).resolve()
+
+
+env = get_env()
+db_path = get_db_path(env)
+conn_str = f"Driver={{DuckDB Driver}};Database={db_path};access_mode=READ_ONLY"
 
 print("=" * 60)
-print("DuckDB warehouse path (use this in ODBC DSN)")
+print("DuckDB ODBC setup (Power BI)")
 print("=" * 60)
-print(f"\nFull absolute path:\n  {db_path}\n")
+print(f"\nEnvironment: {env}")
+print(f"Database file: {db_path}")
+print(f"\nConnection string:\n  {conn_str}\n")
 print(f"File exists: {db_path.exists()}")
 if db_path.exists():
     print(f"File size: {db_path.stat().st_size / 1024 / 1024:.1f} MB")
@@ -22,7 +41,6 @@ print()
 try:
     import pyodbc
 
-    conn_str = f"Driver={{DuckDB Driver}};Database={db_path};access_mode=READ_ONLY"
     conn = pyodbc.connect(conn_str)
     cursor = conn.cursor()
 
@@ -69,7 +87,7 @@ If the DSN configuration dialog has no "Database" field:
 
   Driver={DuckDB Driver};Database=<PATH>;access_mode=READ_ONLY
 
-  Example:
-  Driver={DuckDB Driver};Database=""" + str(db_path) + """;access_mode=READ_ONLY
+  Example (""" + env + """):
+  """ + conn_str + """
 """)
 print("=" * 60)

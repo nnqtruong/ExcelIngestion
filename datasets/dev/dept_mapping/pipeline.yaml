@@ -1,0 +1,23 @@
+# Dataset: dept_mapping (dev)
+# Environment path: datasets/dev/dept_mapping — run with: --dataset dev/dept_mapping
+dataset: dept_mapping
+environment: dev
+description: "Employee to department/team mapping from CRC HR export"
+
+steps:
+  - 01_convert
+  - 02_normalize_schema
+  - 04_clean_errors       # catches NULL strings → real nulls
+  - 05_normalize_values   # fixes netwarelogin casing
+  - 08_validate
+  - 09_export_sqlite
+
+sqlite:
+  database: warehouse.db
+  table: employees
+  indexes:
+    - userid
+    - email
+    - divisionid
+    - teamid
+    - division

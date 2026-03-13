@@ -1,0 +1,11 @@
+crc_analytics:
+  target: dev
+  outputs:
+    dev:
+      type: duckdb
+      path: ../powerbi/dev_warehouse.duckdb
+      threads: 4
+    prod:
+      type: duckdb
+      path: ../powerbi/warehouse.duckdb
+      threads: 4

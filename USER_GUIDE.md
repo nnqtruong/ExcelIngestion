@@ -4,6 +4,60 @@ This tool converts your Excel files into a format Power BI can read quickly.
 
 ---
 
+## Dev vs Prod (Environments)
+
+**The default is always dev** so that normal use uses development data and files. You only need to switch to prod when you want to run or connect to production.
+
+### 1. Setting the environment (PIPELINE_ENV)
+
+- **Windows (Command Prompt):**  
+  `set PIPELINE_ENV=prod`
+- **Windows (PowerShell):**  
+  `$env:PIPELINE_ENV="prod"`
+- **macOS/Linux:**  
+  `export PIPELINE_ENV=prod`
+
+If you do not set `PIPELINE_ENV`, it defaults to **dev**.
+
+### 2. The --env flag for run_pipeline.py
+
+When you run the pipeline with a dataset name, it uses **datasets/{env}/{dataset}/**:
+
+- **Dev (default):**  
+  `python run_pipeline.py --dataset tasks` → uses `datasets/dev/tasks/`
+- **Prod:**  
+  `python run_pipeline.py --env prod --dataset tasks` → uses `datasets/prod/tasks/`
+
+`--env` can be `dev` or `prod` (default is `dev`). The pipeline prints the current environment at start.
+
+### 3. Folder structure (dev vs prod)
+
+| Environment | Where your data lives | SQLite DB | Power BI DuckDB file |
+|-------------|------------------------|-----------|------------------------|
+| **dev**     | `datasets\dev\tasks\raw\`, `datasets\dev\dept_mapping\raw\` | `analytics\dev_warehouse.db` | `powerbi\dev_warehouse.duckdb` |
+| **prod**    | `datasets\prod\tasks\raw\`, `datasets\prod\dept_mapping\raw\` | `analytics\warehouse.db` | `powerbi\warehouse.duckdb` |
+
+Put Excel files in the folder for the environment you are using (e.g. dev: `datasets\dev\tasks\raw\`).
+
+### 4. Power BI connection strings for each environment
+
+Use the connection string that matches the environment:
+
+- **Dev (default):**  
+  `Driver={DuckDB Driver};Database=C:\Users\quang\CRC Code\ExcelIngestion\powerbi\dev_warehouse.duckdb;access_mode=READ_ONLY`
+- **Prod:**  
+  `Driver={DuckDB Driver};Database=C:\Users\quang\CRC Code\ExcelIngestion\powerbi\warehouse.duckdb;access_mode=READ_ONLY`
+
+Replace the path with your actual project folder. To see the exact string for the current environment, run:  
+`python powerbi/setup_odbc.py` (for dev) or `set PIPELINE_ENV=prod` then `python powerbi/setup_odbc.py` (for prod).
+
+### 5. Default is always dev
+
+- If you do not set `PIPELINE_ENV` or `--env`, the pipeline and Power BI scripts use **dev**.
+- This avoids accidentally writing or reading production data when you meant to use development.
+
+---
+
 ## What You Need Before Starting
 
 1. **Python installed** (version 3.10 or newer)
@@ -54,13 +108,21 @@ Wait for it to finish (may take 1-2 minutes).
 
 ## Adding Your Excel Files
 
+Default environment is **dev**. Use these folders:
+
 1. Open File Explorer
-2. Go to: `C:\Users\quang\CRC Code\ExcelIngestion\datasets\tasks\raw`
+2. Go to: `C:\Users\quang\CRC Code\ExcelIngestion\datasets\dev\tasks\raw`
 3. Copy your Excel files (`.xlsx`) into this folder
 
 For employee/department data:
-- Go to: `C:\Users\quang\CRC Code\ExcelIngestion\datasets\dept_mapping\raw`
+- Go to: `C:\Users\quang\CRC Code\ExcelIngestion\datasets\dev\dept_mapping\raw`
 - Copy your employee mapping Excel file here
+
+For unified employee dimension (HR + Genpact):
+- Go to: `C:\Users\quang\CRC Code\ExcelIngestion\datasets\dev\employees_master\raw`
+- Copy Brokerage.xlsx, Select.xlsx, and Genpact.xlsx here
+
+For production, use `datasets\prod\tasks\raw`, `datasets\prod\dept_mapping\raw`, and `datasets\prod\employees_master\raw` and run the pipeline with `--env prod`.
 
 ---
 
@@ -75,21 +137,40 @@ cd "C:\Users\quang\CRC Code\ExcelIngestion"
 
 ### Step 2: Run the Pipeline
 
-For task data:
+Default is **dev**. For task data:
 ```
 python run_pipeline.py
 ```
+Or explicitly: `python run_pipeline.py --dataset tasks`
 
 For employee data:
 ```
 python run_pipeline.py --dataset dept_mapping
 ```
 
-Wait for it to finish. You'll see progress messages.
+For unified employee dimension:
+```
+python run_pipeline.py --dataset employees_master
+```
+
+For production:
+```
+python run_pipeline.py --env prod --dataset tasks
+python run_pipeline.py --env prod --dataset dept_mapping
+```
+
+Wait for it to finish. You'll see the environment (e.g. "Environment: dev") and progress messages.
 
 ### Step 3: Create the Power BI Database
 
+Default is **dev** (creates `powerbi\dev_warehouse.duckdb`):
 ```
+python powerbi/create_duckdb.py
+```
+
+For production:
+```
+set PIPELINE_ENV=prod
 python powerbi/create_duckdb.py
 ```
 
@@ -116,11 +197,15 @@ Loaded tasks_with_dept: 6,000,000 rows
 ### Step 3: Enter Connection String
 
 1. Click **Advanced options**
-2. In the **Connection string** box, paste:
+2. In the **Connection string** box, paste the string for your environment (default is **dev**):
 
-```
-Driver={DuckDB Driver};Database=C:\Users\quang\CRC Code\ExcelIngestion\powerbi\warehouse.duckdb;access_mode=READ_ONLY
-```
+   **Dev:**  
+   `Driver={DuckDB Driver};Database=C:\Users\quang\CRC Code\ExcelIngestion\powerbi\dev_warehouse.duckdb;access_mode=READ_ONLY`
+
+   **Prod:**  
+   `Driver={DuckDB Driver};Database=C:\Users\quang\CRC Code\ExcelIngestion\powerbi\warehouse.duckdb;access_mode=READ_ONLY`
+
+   Replace the path with your project folder. Run `python powerbi/setup_odbc.py` to print the exact string.
 
 3. Click **OK**
 
@@ -128,7 +213,8 @@ Driver={DuckDB Driver};Database=C:\Users\quang\CRC Code\ExcelIngestion\powerbi\w
 
 You'll see these tables:
 - `tasks` - All your task data
-- `employees` - Employee/department info
+- `employees` - Employee/department info (dept_mapping)
+- `employees_master` - Unified employee dimension (HR + Genpact)
 - `tasks_with_dept` - Tasks joined with employee info (recommended)
 
 And these views (pre-calculated summaries):
@@ -144,14 +230,16 @@ Select the tables you need, click **Load**.
 
 When you have new Excel files:
 
-1. Delete old files from the `raw` folder (or add new ones alongside)
-2. Run the pipeline again:
+1. Delete old files from the `raw` folder for your environment (e.g. `datasets\dev\tasks\raw`) or add new ones alongside.
+2. Run the pipeline again (default is dev):
    ```
    cd "C:\Users\quang\CRC Code\ExcelIngestion"
    .venv\Scripts\activate
    python run_pipeline.py
+   python run_pipeline.py --dataset dept_mapping
    python powerbi/create_duckdb.py
    ```
+   For prod, use `--env prod` and `set PIPELINE_ENV=prod` before create_duckdb.py.
 3. In Power BI, click **Refresh**
 
 ---
@@ -161,10 +249,13 @@ When you have new Excel files:
 | Task | Command |
 |------|---------|
 | Activate environment | `.venv\Scripts\activate` |
-| Run task pipeline | `python run_pipeline.py` |
+| Run task pipeline (dev) | `python run_pipeline.py` or `python run_pipeline.py --dataset tasks` |
+| Run task pipeline (prod) | `python run_pipeline.py --env prod --dataset tasks` |
 | Run employee pipeline | `python run_pipeline.py --dataset dept_mapping` |
-| Create Power BI database | `python powerbi/create_duckdb.py` |
-| Test ODBC connection | `python powerbi/setup_odbc.py` |
+| Run employees_master | `python run_pipeline.py --dataset employees_master` |
+| Create Power BI database (dev) | `python powerbi/create_duckdb.py` |
+| Create Power BI database (prod) | `set PIPELINE_ENV=prod` then `python powerbi/create_duckdb.py` |
+| Test ODBC / print connection string | `python powerbi/setup_odbc.py` |
 
 ---
 
@@ -196,12 +287,15 @@ When you have new Excel files:
 
 ## File Locations
 
-| What | Where |
-|------|-------|
-| Your Excel files (tasks) | `datasets\tasks\raw\` |
-| Your Excel files (employees) | `datasets\dept_mapping\raw\` |
-| Power BI database | `powerbi\warehouse.duckdb` |
-| Pipeline logs | `datasets\tasks\logs\pipeline.log` |
+Default environment is **dev**.
+
+| What | Dev | Prod |
+|------|-----|------|
+| Excel files (tasks) | `datasets\dev\tasks\raw\` | `datasets\prod\tasks\raw\` |
+| Excel files (employees) | `datasets\dev\dept_mapping\raw\` | `datasets\prod\dept_mapping\raw\` |
+| Excel files (employees_master) | `datasets\dev\employees_master\raw\` | `datasets\prod\employees_master\raw\` |
+| Power BI DuckDB | `powerbi\dev_warehouse.duckdb` | `powerbi\warehouse.duckdb` |
+| Pipeline logs | `datasets\dev\tasks\logs\pipeline.log` | `datasets\prod\tasks\logs\pipeline.log` |
 
 ---
 

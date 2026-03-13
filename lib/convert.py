@@ -11,6 +11,7 @@ import pyarrow.parquet as pq
 import psutil
 
 from lib.logging_util import monitor_step
+from lib.schema import columns_as_list, load_schema
 
 EXCEL_EXTENSIONS = (".xlsx", ".xls")
 DEFAULT_CHUNK_SIZE = 50_000
@@ -51,14 +52,24 @@ def coerce_all_to_string(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def _schema_defines_source_system(schema: dict) -> bool:
+    """True if schema columns include source_system (employees_master, etc.)."""
+    try:
+        return any(c.get("name") == "source_system" for c in columns_as_list(schema))
+    except Exception:
+        return False
+
+
 def convert_excel_to_parquet(
     excel_path: Path,
     output_path: Path,
     chunk_size: int = DEFAULT_CHUNK_SIZE,
+    source_system: str | None = None,
 ) -> tuple[int, list[str], int]:
     """Read Excel in chunks via openpyxl, stream to Parquet. Returns (total_rows, headers, chunk_count).
 
     Uses read_only=True and iter_rows so 500K+ row files stay under ~200MB RAM.
+    If source_system is set, a constant source_system column is appended (employees_master).
     """
     wb = openpyxl.load_workbook(excel_path, read_only=True)
     ws = wb.active
@@ -71,11 +82,20 @@ def convert_excel_to_parquet(
     chunk_count = 0
     chunk = []
 
+    def _with_source(df: pd.DataFrame) -> pd.DataFrame:
+        if source_system is None:
+            return df
+        out = df.copy()
+        out["source_system"] = source_system
+        out["source_system"] = out["source_system"].astype("string")
+        return out
+
     for row in rows:
         chunk.append(row)
         if len(chunk) >= chunk_size:
             df = pd.DataFrame(chunk, columns=headers)
             df = coerce_all_to_string(df)
+            df = _with_source(df)
             table = pa.Table.from_pandas(df, preserve_index=False)
             if writer is None:
                 writer = pq.ParquetWriter(str(output_path), table.schema)
@@ -87,6 +107,7 @@ def convert_excel_to_parquet(
     if chunk:
         df = pd.DataFrame(chunk, columns=headers)
         df = coerce_all_to_string(df)
+        df = _with_source(df)
         table = pa.Table.from_pandas(df, preserve_index=False)
         if writer is None:
             writer = pq.ParquetWriter(str(output_path), table.schema)
@@ -98,12 +119,16 @@ def convert_excel_to_parquet(
         writer.close()
     else:
         # No data rows: write empty Parquet with schema from headers
-        empty_df = pd.DataFrame(columns=headers)
+        empty_cols = list(headers) + (["source_system"] if source_system else [])
+        empty_df = pd.DataFrame(columns=empty_cols)
         table = pa.Table.from_pandas(empty_df, preserve_index=False)
         pq.write_table(table, str(output_path))
 
     wb.close()
-    return total_rows, headers, chunk_count
+    out_headers = list(headers)
+    if source_system is not None:
+        out_headers.append("source_system")
+    return total_rows, out_headers, chunk_count
 
 
 @monitor_step
@@ -135,6 +160,15 @@ def run_convert(
     if not excel_files:
         return 0
 
+    add_source_system = False
+    try:
+        from lib.paths import SCHEMA_PATH
+
+        if SCHEMA_PATH.exists():
+            add_source_system = _schema_defines_source_system(load_schema(SCHEMA_PATH))
+    except Exception:
+        add_source_system = False
+
     total = len(excel_files)
     total_size = sum(f.stat().st_size for f in excel_files)
     total_rows = 0
@@ -156,14 +190,20 @@ def run_convert(
 
         out_path = clean_dir / f"{path.stem}.parquet"
 
+        stem = path.stem
+        src_sys = stem if add_source_system else None
+
         if path.suffix.lower() == ".xlsx":
             rows, headers, chunk_count = convert_excel_to_parquet(
-                path, out_path, chunk_size=chunk_size
+                path, out_path, chunk_size=chunk_size, source_system=src_sys
             )
         else:
             # .xls: openpyxl doesn't support it, use pandas
             df = pd.read_excel(path, engine="xlrd" if path.suffix.lower() == ".xls" else "openpyxl")
             df = coerce_all_to_string(df)
+            if src_sys is not None:
+                df["source_system"] = src_sys
+                df["source_system"] = df["source_system"].astype("string")
             df.to_parquet(out_path, index=False)
             rows = len(df)
             chunk_count = 1

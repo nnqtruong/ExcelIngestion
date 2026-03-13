@@ -1,0 +1,22 @@
+# Value normalization maps for employees_master
+# Add mappings here if source data has inconsistent values
+
+addressable_population:
+  "Yes": "Yes"
+  "yes": "Yes"
+  "Y": "Yes"
+  "No": "No"
+  "no": "No"
+  "N": "No"
+
+is_recent_hire:
+  "Yes": "Yes"
+  "yes": "Yes"
+  "No": "No"
+  "no": "No"
+
+is_recent_term:
+  "Yes": "Yes"
+  "yes": "Yes"
+  "No": "No"
+  "no": "No"

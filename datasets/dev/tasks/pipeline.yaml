@@ -1,0 +1,15 @@
+# Dataset: tasks (dev)
+# Environment path: datasets/dev/tasks — run with: --dataset dev/tasks
+# Pipeline root for this dataset. run_pipeline.py uses this file's directory as dataset root:
+#   config/   - schema.yaml, value_maps.yaml, combine.yaml
+#   raw/      - input Excel files (add your files here)
+#   clean/    - intermediate Parquet
+#   errors/   - rows that failed type casting
+#   analytics/- combined.parquet; SQLite writes to shared warehouse.db
+#   logs/     - pipeline.log, validation_report.json
+name: tasks
+environment: dev
+
+sqlite:
+  database: warehouse.db
+  table: tasks
