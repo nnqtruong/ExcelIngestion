@@ -33,8 +33,7 @@ ExcelIngestion/
 │   ├── __init__.py
 │   ├── paths.py                 # Path resolution, environment detection
 │   ├── config.py                # YAML config loaders
-│   ├── schema.py                # Schema loading and validation rules
-│   ├── schema.py                # Schema loading, column aliases
+│   ├── schema.py                # Schema loading, column aliases, validation rules
 │   ├── convert.py               # Excel to Parquet conversion
 │   ├── normalize_schema.py      # Column name normalization + aliasing
 │   ├── add_missing_columns.py   # Add schema columns missing from source

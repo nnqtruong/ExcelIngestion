@@ -147,11 +147,10 @@ ExcelIngestion/
 │   │   │   ├── clean/, errors/, analytics/, logs/
 │   │   ├── dept_mapping/
 │   │   └── employees_master/   # Unified employee dimension (3 sources)
-│   ├── prod/                   # Production environment
-│   │   ├── tasks/
-│   │   └── dept_mapping/
-│   ├── tasks/                  # Legacy: tasks (optional)
-│   └── dept_mapping/           # Legacy: dept_mapping (optional)
+│   └── prod/                   # Production environment
+│       ├── tasks/
+│       ├── dept_mapping/
+│       └── employees_master/
 ├── analytics/                  # Shared SQLite warehouse (project root)
 │   ├── dev_warehouse.db        # Dev (when PIPELINE_ENV=dev)
 │   └── warehouse.db            # Prod (when PIPELINE_ENV=prod)
@@ -393,9 +392,9 @@ Per-dataset DBs (when `sqlite.database` is not `warehouse.db`) live under `datas
 # Run all tests
 pytest tests/ -v
 
-# Generate test fixtures (tasks: project raw/; copy to datasets/tasks/raw for pipeline)
-python tests/create_fixtures.py
-python tests/create_dept_fixtures.py   # writes datasets/dept_mapping/raw/employee_mapping.xlsx
+# Generate test fixtures
+python tests/create_fixtures.py --output-dir datasets/dev/tasks/raw
+python tests/create_dept_fixtures.py --output-dir datasets/dev/dept_mapping/raw
 ```
 
 ## Power BI / DuckDB Integration
