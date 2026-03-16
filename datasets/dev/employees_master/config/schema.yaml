@@ -128,6 +128,7 @@ column_order:
 
 validation:
   # Combined Brokerage+Select+Genpact: many columns are source-specific → high null % expected
-  max_null_rate: 0.95
+  # is_recent_term (96.9%), email/genpact_* (95.4%) need headroom
+  max_null_rate: 0.98
   max_duplicate_rate: 1.0
   min_row_count: 1

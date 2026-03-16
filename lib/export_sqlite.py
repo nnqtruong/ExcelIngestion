@@ -21,18 +21,38 @@ def prepare_dataframe_for_sqlite(df: pd.DataFrame) -> pd.DataFrame:
 def create_indexes(
     conn: sqlite3.Connection, table_name: str, columns: list[str], log: logging.Logger
 ) -> None:
-    """Create indexes on columns that exist. Skips row_id (already primary)."""
+    """Create indexes on commonly queried columns. Skips row_id (already primary).
+
+    Auto-indexes: taskstatus, taskid, dateinitiated, userid, employee_id
+    (only if column exists in the table).
+    """
+    # Columns that benefit from indexing for views and common queries
+    auto_index_columns = {
+        "taskstatus",  # v_missing_status, status breakdowns
+        "taskid",  # unique task lookups
+        "dateinitiated",  # v_daily_volume, date range queries
+        "userid",  # employee joins
+        "employee_id",  # employee lookups
+        "assignedto",  # v_tasks_by_department join
+        "operationby",  # v_tasks_by_department join
+    }
+
     cursor = conn.cursor()
-    for col in columns:
-        if col == "row_id":
-            continue
-        idx_name = f"idx_{table_name}_{col}"
-        try:
-            cursor.execute(f"CREATE INDEX IF NOT EXISTS {idx_name} ON {table_name} ({col})")
-            log.info("Created index %s on %s", idx_name, col)
-        except sqlite3.OperationalError:
-            pass
+    columns_set = set(columns)
+    indexed = []
+
+    for col in auto_index_columns:
+        if col in columns_set:
+            idx_name = f"idx_{table_name}_{col}"
+            try:
+                cursor.execute(f"CREATE INDEX IF NOT EXISTS {idx_name} ON {table_name} ({col})")
+                indexed.append(col)
+            except sqlite3.OperationalError:
+                pass
+
     conn.commit()
+    if indexed:
+        log.info("Created indexes on: %s", ", ".join(indexed))
 
 
 def run_verification_queries(

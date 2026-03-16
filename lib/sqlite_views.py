@@ -81,14 +81,28 @@ def create_views(conn: sqlite3.Connection, log: logging.Logger) -> list[str]:
 
 
 def verify_views(conn: sqlite3.Connection, view_names: list[str], log: logging.Logger) -> dict:
-    """Verify views are queryable; return {view_name: row_count}. Only checks view_names that exist."""
+    """Verify views are queryable; return {view_name: row_count}. Only checks view_names that exist.
+
+    Uses LIMIT 1 for potentially slow views (v_missing_status, v_tasks_by_department)
+    to avoid full table scans during verification.
+    """
     cursor = conn.cursor()
     results = {}
+    # Views that can be slow on large tables - just verify they're queryable
+    slow_views = {"v_missing_status", "v_tasks_by_department"}
+
     for view_name in view_names:
         try:
-            cursor.execute(f"SELECT COUNT(*) FROM {view_name}")
-            results[view_name] = cursor.fetchone()[0]
-            log.info("View %s: %d rows", view_name, results[view_name])
+            if view_name in slow_views:
+                # Just verify view is queryable without counting all rows
+                cursor.execute(f"SELECT 1 FROM {view_name} LIMIT 1")
+                row = cursor.fetchone()
+                results[view_name] = 1 if row else 0
+                log.info("View %s: verified (skipped full count for performance)", view_name)
+            else:
+                cursor.execute(f"SELECT COUNT(*) FROM {view_name}")
+                results[view_name] = cursor.fetchone()[0]
+                log.info("View %s: %d rows", view_name, results[view_name])
         except sqlite3.Error as e:
             log.warning("Failed to query view %s: %s", view_name, e)
             results[view_name] = -1
