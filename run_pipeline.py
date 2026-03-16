@@ -12,6 +12,7 @@ ROOT = Path(__file__).resolve().parent
 SCRIPTS_DIR = ROOT / "scripts"
 
 DEFAULT_DATASET = "tasks"
+ALL_DATASETS = ["tasks", "dept_mapping", "employees_master"]
 
 STEPS = [
     (1, "01_convert", SCRIPTS_DIR / "01_convert.py"),
@@ -182,14 +183,55 @@ def main() -> int:
         action="store_true",
         help="Use DEBUG log level so step timing and memory (monitor_step) are visible.",
     )
+    parser.add_argument(
+        "--all",
+        action="store_true",
+        help="Run all datasets (tasks, dept_mapping, employees_master) in sequence.",
+    )
     args = parser.parse_args()
 
-    if args.pipeline:
-        pipeline_path = ROOT / args.pipeline
-    elif args.dataset:
-        pipeline_path = ROOT / "datasets" / args.env / args.dataset / "pipeline.yaml"
+    # Handle --all flag: run all datasets in sequence
+    if args.all:
+        if args.pipeline or args.dataset:
+            print("Error: --all cannot be combined with --pipeline or --dataset", file=sys.stderr)
+            return 1
+        datasets_to_run = ALL_DATASETS
     else:
-        pipeline_path = ROOT / "datasets" / args.env / DEFAULT_DATASET / "pipeline.yaml"
+        datasets_to_run = None  # Single dataset mode
+
+    # Single dataset mode
+    if datasets_to_run is None:
+        if args.pipeline:
+            pipeline_path = ROOT / args.pipeline
+        elif args.dataset:
+            pipeline_path = ROOT / "datasets" / args.env / args.dataset / "pipeline.yaml"
+        else:
+            pipeline_path = ROOT / "datasets" / args.env / DEFAULT_DATASET / "pipeline.yaml"
+        return run_single_dataset(pipeline_path, args)
+
+    # Multi-dataset mode (--all)
+    print(f"Running all datasets: {', '.join(datasets_to_run)}")
+    print(f"Environment: {args.env}")
+    failed = []
+    for dataset_name in datasets_to_run:
+        pipeline_path = ROOT / "datasets" / args.env / dataset_name / "pipeline.yaml"
+        print(f"\n{'='*60}")
+        print(f"Dataset: {dataset_name}")
+        print(f"{'='*60}")
+        result = run_single_dataset(pipeline_path, args)
+        if result != 0:
+            failed.append(dataset_name)
+            print(f"WARNING: {dataset_name} failed, continuing with next dataset...")
+
+    if failed:
+        print(f"\nCompleted with errors. Failed datasets: {', '.join(failed)}")
+        return 1
+    print(f"\nAll datasets completed successfully.")
+    return 0
+
+
+def run_single_dataset(pipeline_path: Path, args: argparse.Namespace) -> int:
+    """Run pipeline for a single dataset. Returns exit code."""
     try:
         dataset_root = get_dataset_root(pipeline_path)
     except FileNotFoundError as e:
