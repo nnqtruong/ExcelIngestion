@@ -1,8 +1,13 @@
 {
   "permissions": {
     "allow": [
+      "Bash(\"c:/Users/quang/CRC Code/ExcelIngestion/.venv/Scripts/python.exe\" -c:*)",
+      "Bash(\"c:/Users/quang/CRC Code/ExcelIngestion/.venv/Scripts/python.exe\" run_pipeline.py --dataset workers)",
       "Bash(\"c:/Users/quang/CRC Code/ExcelIngestion/.venv/Scripts/python.exe\":*)",
-      "Bash(\"c:/Users/quang/CRC Code/ExcelIngestion/.venv/Scripts/python.exe\" -c \"\nimport duckdb\nconn = duckdb.connect(''c:/Users/quang/CRC Code/ExcelIngestion/powerbi/dev_warehouse.duckdb'', read_only=True)\ntables = [r[0] for r in conn.execute(''SHOW TABLES'').fetchall()]\nprint(''DuckDB Tables:'')\n\nexpected_marts = [''mart_tasks_enriched'', ''mart_team_capacity'', ''mart_team_demand'', ''mart_onshore_offshore'', ''mart_backlog'', ''mart_turnaround'', ''mart_daily_trend'']\n\nfor t in sorted(tables):\n    count = conn.execute(f''SELECT COUNT(*) FROM \"\"{t}\"\"'').fetchone()[0]\n    cols = len(conn.execute(f''SELECT * FROM \"\"{t}\"\" LIMIT 0'').description)\n    status = ''✅'' if t in expected_marts else ''''\n    print(f''  {status} {t}: {count:,} rows, {cols} columns'')\n\nprint()\nprint(''Expected 7 marts check:'')\nfor m in expected_marts:\n    exists = m in tables\n    has_rows = conn.execute(f''SELECT COUNT(*) FROM \"\"{m}\"\"'').fetchone()[0] > 0 if exists else False\n    print(f''  {m}: {\"\"✅ EXISTS\"\" if exists else \"\"❌ MISSING\"\"} {\"\"(\"\" + str(conn.execute(f\"\"SELECT COUNT(*) FROM {m}\"\").fetchone()[0]) + \"\" rows)\"\" if exists else \"\"\"\"}'')\n\nconn.close()\n\")"
+      "Bash(\"c:/Users/quang/CRC Code/ExcelIngestion/.venv/Scripts/python.exe\" run_pipeline.py --all --dry-run)",
+      "Bash(\"c:/Users/quang/CRC Code/ExcelIngestion/.venv/Scripts/python.exe\" run_pipeline.py --dataset workers --dry-run)",
+      "Bash(\"c:/Users/quang/CRC Code/ExcelIngestion/.venv/Scripts/python.exe\" run_pipeline.py --all)",
+      "Bash(\"c:/Users/quang/CRC Code/ExcelIngestion/.venv/Scripts/python.exe\" run_pipeline.py --dataset tasks --from-step 9)"
     ],
     "deny": [],
     "ask": []

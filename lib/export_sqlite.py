@@ -107,7 +107,24 @@ def run_export_sqlite(
     table_name: str,
     log: logging.Logger,
 ) -> dict:
-    """Export combined Parquet to SQLite. Returns verification results."""
+    """Export combined Parquet to SQLite. Returns verification results.
+
+    NOTE: Known memory issue - this step loads entire Parquet into pandas DataFrame
+    before writing to SQLite. For large datasets (6M+ rows), memory usage spikes to
+    ~2-3GB. This will be addressed in DuckDB migration (replace pandas.to_sql with
+    DuckDB's native COPY TO sqlite). Tracking issue: DuckDB migration milestone.
+    """
     if not combined_path.exists():
         raise FileNotFoundError(f"Combined Parquet not found: {combined_path}")
+
+    # Log memory warning for large files
+    file_size_mb = combined_path.stat().st_size / (1024 * 1024)
+    if file_size_mb > 50:  # >50MB parquet typically means 1M+ rows
+        log.warning(
+            "Memory warning: Loading %.1fMB Parquet into memory. "
+            "Large datasets may cause high memory usage. "
+            "(Known issue - will be fixed in DuckDB migration)",
+            file_size_mb,
+        )
+
     return export_to_sqlite(combined_path, db_path, table_name, log)
