@@ -280,7 +280,7 @@ python run_pipeline.py --pipeline datasets/my_dataset/pipeline.yaml
 | 07 | handle_nulls | Apply fill strategies from schema |
 | 08 | validate | Check nulls, dtypes, row count; write JSON report |
 | 09 | export_sqlite | Write to SQLite (table from pipeline.yaml); create/replace table only |
-| 10 | sqlite_views | Create task analytics views + cross-dataset view if both tables exist |
+| 10 | sqlite_views | Sync dbt mart models as SQLite views for ad-hoc queries |
 
 ## Configuration
 
@@ -360,31 +360,52 @@ When `pipeline.yaml` sets `sqlite.database: warehouse.db`, step 09 writes to **p
 - **dept_mapping** pipeline → table `employees`
 - **employees_master** pipeline → table `employees_master`
 
-Step 10 creates a **cross-dataset view** when both tables exist:
-
-- **`v_tasks_by_department`** – tasks LEFT JOIN employees on `LOWER(assignedto)=LOWER(userid)` OR `LOWER(operationby)=LOWER(userid)` OR `LOWER(taskfrom)=LOWER(userid)`, adding `full_name`, `employee_title`, `division`, `team`, `divisionid` from employees. Use it for task counts by division or to see which employee a task is assigned to.
+Step 10 syncs **dbt mart models** as SQLite views for ad-hoc queries. See [dbt Marts](#dbt-marts-analytics-layer) below.
 
 Example queries:
 
 ```sql
 SELECT COUNT(*) FROM tasks;
 SELECT COUNT(*) FROM employees;
-SELECT division, COUNT(*) AS task_count FROM v_tasks_by_department GROUP BY division;
-SELECT * FROM v_tasks_by_department WHERE full_name IS NOT NULL LIMIT 10;
+SELECT department, task_count FROM mart_team_demand WHERE task_week >= '2025-01-01';
+SELECT drawer, completed_count, avg_handle_hours FROM mart_turnaround LIMIT 10;
 ```
 
 ## SQLite Database
 
 ```bash
-# Shared warehouse (after running both tasks and dept_mapping)
+# Shared warehouse (after running all datasets)
 sqlite3 analytics/warehouse.db
 
-# Tables: tasks, employees
-# Task-only views (require tasks table): v_task_duration, v_daily_volume, v_drawer_summary, v_carrier_workload, v_missing_status
-# Cross-dataset view: v_tasks_by_department
+# Tables: tasks, employees, employees_master
+# Marts (synced from dbt): mart_tasks_enriched, mart_team_capacity, mart_team_demand,
+#   mart_onshore_offshore, mart_backlog, mart_turnaround, mart_daily_trend
 ```
 
 Per-dataset DBs (when `sqlite.database` is not `warehouse.db`) live under `datasets/<name>/analytics/<database>`.
+
+## dbt Marts (Analytics Layer)
+
+dbt is the single source of truth for analytics. Mart models are defined in `dbt_crc/models/marts/` and synced to both DuckDB (Power BI) and SQLite (ad-hoc queries).
+
+| Mart | Description |
+|------|-------------|
+| `mart_tasks_enriched` | Tasks with worker fields, employee source, duration/lifecycle metrics |
+| `mart_team_capacity` | Active headcount and FTE by cost center hierarchy and management level |
+| `mart_team_demand` | Task volume and handle time by cost center and date (daily grain) |
+| `mart_onshore_offshore` | Task metrics by employee source system, flow, and step |
+| `mart_backlog` | Open tasks by drawer, flow, step, status with average age |
+| `mart_turnaround` | Completed-task performance: counts and avg handle/lifecycle hours |
+| `mart_daily_trend` | Daily opened vs completed by drawer with net backlog change |
+
+### Running dbt
+
+```bash
+cd dbt_crc
+dbt run      # Build all models
+dbt test     # Run data tests
+dbt build    # Run + test
+```
 
 ## Testing
 
@@ -415,18 +436,18 @@ python powerbi/create_duckdb.py
 |-------|--------|------|
 | `tasks` | datasets/tasks/analytics/combined.parquet | 6M |
 | `employees` | datasets/dept_mapping/analytics/combined.parquet | 200 |
-| `tasks_with_dept` | JOIN tasks + employees on `LOWER(TRIM(operationby))` | 6M |
+| `employees_master` | datasets/employees_master/analytics/combined.parquet | 60 |
 
-**Views created:**
-| View | Description |
+**Marts created (from dbt):**
+| Mart | Description |
 |------|-------------|
-| `v_task_duration` | Tasks with duration_minutes, duration_hours, lifecycle_hours |
-| `v_daily_volume` | Task counts by date (initiated, completed, in_progress, pending) |
-| `v_drawer_summary` | Task counts by drawer with avg duration |
-| `v_carrier_workload` | Task counts by carrier and flowname |
-| `v_missing_status` | Tasks where taskstatus IS NULL |
-| `v_tasks_by_department` | Tasks LEFT JOIN employees |
-| `v_team_workload` | Task counts by team and division |
+| `mart_tasks_enriched` | Tasks with worker fields, employee source, duration metrics |
+| `mart_team_capacity` | Headcount and FTE by cost center hierarchy |
+| `mart_team_demand` | Task volume by cost center and date |
+| `mart_onshore_offshore` | Task metrics by employee source system |
+| `mart_backlog` | Open tasks by drawer/flow/step with age |
+| `mart_turnaround` | Completed-task handle/lifecycle hours |
+| `mart_daily_trend` | Daily opened vs completed by drawer |
 
 ### DuckDB ODBC Setup (Windows)
 

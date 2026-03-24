@@ -1,0 +1,18 @@
+# Workday export value normalization (canonical column names after step 02).
+
+current_status:
+  "A": "Active"
+  "L": "Leave"
+
+full_part_time:
+  "Full time": "Full Time"
+  "Part time": "Part Time"
+  "FULL TIME": "Full Time"
+  "PART TIME": "Part Time"
+
+# Sample file already uses "Exempt" / "Non-Exempt"; add variants if exports differ.
+exempt_status:
+  "EXEMPT": "Exempt"
+  "NON-EXEMPT": "Non-Exempt"
+  "Non-exempt": "Non-Exempt"
+  "non-exempt": "Non-Exempt"

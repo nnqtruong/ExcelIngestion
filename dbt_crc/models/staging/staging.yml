@@ -35,6 +35,113 @@ models:
       - name: _ingested_at
         description: "Ingestion timestamp."
 
+  - name: stg_workers
+    description: "Staging view for Workday worker export. Trims/lowercases work_email for joins to task assignee fields."
+    columns:
+      - name: row_id
+        description: "Surrogate key (1-based integer from pipeline step 06)."
+        tests:
+          - not_null
+          - unique
+      - name: employee_id
+        description: "Workday employee ID (business key)."
+        tests:
+          - not_null
+          - unique
+      - name: teammate
+        description: "Worker display name from Workday."
+        tests:
+          - not_null
+      - name: current_status
+        description: "Worker status (e.g. Active, Leave) after pipeline value maps."
+        tests:
+          - not_null
+      - name: country
+        description: "Country."
+      - name: company_hierarchy
+        description: "Company hierarchy path."
+      - name: company
+        description: "Company."
+      - name: location
+        description: "Work location."
+      - name: cost_center_hierarchy
+        description: "Cost center hierarchy path."
+      - name: cost_center
+        description: "Cost center."
+      - name: operating_segment
+        description: "Operating segment."
+      - name: business_unit
+        description: "Business unit."
+      - name: supervisory_organization
+        description: "Supervisory organization."
+      - name: job_profile
+        description: "Job profile."
+      - name: business_title
+        description: "Business title."
+      - name: position
+        description: "Position."
+      - name: management_level
+        description: "Management level."
+      - name: hire_date
+        description: "Hire date."
+      - name: original_hire_date
+        description: "Original hire date."
+      - name: continuous_service_date
+        description: "Continuous service date."
+      - name: last_termination_date
+        description: "Last termination date when applicable."
+      - name: scheduled_weekly_hours
+        description: "Scheduled weekly hours."
+      - name: fte
+        description: "Full-time equivalent."
+      - name: full_part_time
+        description: "Full time / Part time."
+      - name: pay_rate_type
+        description: "Pay rate type."
+      - name: exempt_status
+        description: "Exempt or non-exempt."
+      - name: worker_type
+        description: "Worker type (e.g. Employee)."
+      - name: worker_sub_type
+        description: "Worker sub-type."
+      - name: employee_type
+        description: "Employee type."
+      - name: work_email
+        description: "Work email (lowered and trimmed for joins to tasks.assignedto when assignee is email)."
+      - name: direct_manager
+        description: "Direct manager."
+      - name: skip_level_manager
+        description: "Skip-level manager."
+      - name: executive_leader
+        description: "Executive leader."
+      - name: _source_file
+        description: "Source Excel filename from ingestion."
+      - name: _ingested_at
+        description: "Ingestion timestamp."
+
+  - name: stg_employees_master
+    description: "Unified HR + Genpact employee dimension; one row per employee_id (deduped by latest _ingested_at). employee_id lowercased/trimmed for joins to stg_tasks.assignedto."
+    columns:
+      - name: row_id
+        description: "Pipeline surrogate key."
+      - name: employee_id
+        description: "Normalized join key (lower/trim)."
+        tests:
+          - not_null
+          - unique
+      - name: name
+        description: "Employee name."
+        tests:
+          - not_null
+      - name: source_system
+        description: "Brokerage, Select, Genpact, etc."
+        tests:
+          - not_null
+      - name: _source_file
+        description: "Source Excel basename from ingestion."
+      - name: _ingested_at
+        description: "Ingestion timestamp."
+
   - name: stg_tasks
     description: "Staging view for task data from raw tasks Parquet. Normalizes taskstatus and flowname via value-map seeds, trims/lowers join keys (assignedto, taskfrom, operationby), and collapses multiple spaces in drawer."
     columns:

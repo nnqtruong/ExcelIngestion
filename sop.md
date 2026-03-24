@@ -272,6 +272,18 @@ dbt run-operation generate_model_yaml --args '{"model_names": ["stg_{new_dataset
 
 ## 3. Adding a New Mart Layer
 
+### Existing Marts (Reference)
+
+| Mart | Description |
+|------|-------------|
+| `mart_tasks_enriched` | Tasks with worker fields, employee source, duration metrics |
+| `mart_team_capacity` | Headcount and FTE by cost center hierarchy |
+| `mart_team_demand` | Task volume by cost center and date (daily) |
+| `mart_onshore_offshore` | Task metrics by employee source system |
+| `mart_backlog` | Open tasks by drawer/flow/step with age |
+| `mart_turnaround` | Completed-task handle/lifecycle hours |
+| `mart_daily_trend` | Daily opened vs completed by drawer |
+
 ### When to Create a New Mart
 
 - Need aggregated metrics (daily, weekly, by category)

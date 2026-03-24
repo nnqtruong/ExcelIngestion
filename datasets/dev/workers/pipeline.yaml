@@ -1,0 +1,21 @@
+# Dataset: workers (dev)
+# Environment path: datasets/dev/workers — run with: --dataset workers
+name: workers
+environment: dev
+description: "Workday HR worker export - comprehensive employee dimension"
+
+steps:
+  - 01_convert
+  - 02_normalize_schema
+  - 04_clean_errors
+  - 05_normalize_values
+  - 08_validate
+  - 09_export_sqlite
+
+sqlite:
+  database: warehouse.db
+  table: workers
+  indexes:
+    - employee_id
+    - current_status
+    - work_email

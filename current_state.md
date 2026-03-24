@@ -1,7 +1,7 @@
 # Excel Ingestion Pipeline - Current State (AI Context Document)
 
 > **Purpose**: This document provides full context for LLMs to understand and assist with this codebase.
-> **Last Updated**: 2026-03-13
+> **Last Updated**: 2025-03-24
 
 ---
 
@@ -125,7 +125,7 @@ ExcelIngestion/
 | 07 | handle_nulls | Apply fill strategies from schema |
 | 08 | validate | Check nulls, dtypes, row count; write JSON report |
 | 09 | export_sqlite | Write to SQLite (shared warehouse.db) |
-| 10 | sqlite_views | Create analytics views + cross-dataset view |
+| 10 | sqlite_views | Sync dbt mart models as SQLite views for ad-hoc queries |
 
 **Note**: dept_mapping uses a subset of steps (01, 02, 04, 05, 08, 09) defined in its pipeline.yaml.
 
@@ -343,27 +343,50 @@ pytest tests/ -v
 
 ---
 
-## SQLite Views (Step 10)
+## dbt Marts (Step 10 - Analytics Layer)
 
-### Task-only views (require tasks table)
-- `v_task_duration` - Tasks with duration_minutes, duration_hours, lifecycle_hours
-- `v_daily_volume` - Task counts by date
-- `v_drawer_summary` - Task counts by drawer
-- `v_carrier_workload` - Tasks by carrier and flowname
-- `v_missing_status` - Tasks where taskstatus IS NULL
+dbt is the single source of truth for analytics. Mart SQL models are defined in `dbt_crc/models/marts/` and synced to both DuckDB (Power BI) and SQLite (ad-hoc queries) via `lib/sync_mart_views_sqlite.py`.
 
-### Cross-dataset view (requires both tasks and employees)
-- `v_tasks_by_department` - Tasks LEFT JOIN employees on userid
+| Mart | Description |
+|------|-------------|
+| `mart_tasks_enriched` | Tasks with Workday worker fields, employee source, duration/lifecycle metrics |
+| `mart_team_capacity` | Active headcount and FTE by cost center hierarchy and management level |
+| `mart_team_demand` | Task volume and handle time by cost center and date (daily grain) |
+| `mart_onshore_offshore` | Task metrics by employee source system, flow, and step |
+| `mart_backlog` | Open tasks by drawer, flow, step, status with average age |
+| `mart_turnaround` | Completed-task performance: counts and avg handle/lifecycle hours |
+| `mart_daily_trend` | Daily opened vs completed by drawer with net backlog change |
+
+### Running dbt
+
+```bash
+cd dbt_crc
+dbt run      # Build all models
+dbt test     # Run data tests
+dbt build    # Run + test
+```
 
 ---
 
-## DuckDB Tables (Power BI)
+## DuckDB (Power BI)
 
-| Table | Source | Description |
-|-------|--------|-------------|
-| `tasks` | tasks/analytics/combined.parquet | All task data |
-| `employees` | dept_mapping/analytics/combined.parquet | Employee lookup |
-| `tasks_with_dept` | JOIN tasks + employees | Denormalized for Power BI |
+### Base Tables
+| Table | Source |
+|-------|--------|
+| `tasks` | tasks/analytics/combined.parquet |
+| `employees` | dept_mapping/analytics/combined.parquet |
+| `employees_master` | employees_master/analytics/combined.parquet |
+
+### dbt Marts
+| Mart | Description |
+|------|-------------|
+| `mart_tasks_enriched` | Tasks with worker fields, employee source, duration metrics |
+| `mart_team_capacity` | Headcount and FTE by cost center hierarchy |
+| `mart_team_demand` | Task volume by cost center and date |
+| `mart_onshore_offshore` | Task metrics by employee source system |
+| `mart_backlog` | Open tasks by drawer/flow/step with age |
+| `mart_turnaround` | Completed-task handle/lifecycle hours |
+| `mart_daily_trend` | Daily opened vs completed by drawer |
 
 ---
 
@@ -427,8 +450,8 @@ pyodbc
 2. **Add new dataset**: Create folder structure, pipeline.yaml, config files
 2a. **Add multi-schema dataset**: Use `column_aliases` in schema.yaml (see employees_master)
 3. **Modify validation rules**: Edit schema.yaml validation section
-4. **Add new SQLite view**: Edit lib/sqlite_views.py
-5. **Change DuckDB schema**: Edit powerbi/create_duckdb.py
+4. **Add/modify analytics mart**: Edit dbt_crc/models/marts/*.sql, run `dbt build`
+5. **Update Power BI database**: Run `python powerbi/create_duckdb.py` after dbt changes
 6. **Debug pipeline failures**: Check logs/ directory, errors/ directory
 
 ---

@@ -1,7 +1,7 @@
 version: 2
 models:
   - name: mart_tasks_enriched
-    description: "Tasks enriched with employee/department from three joins (assignedto, taskfrom, operationby). Includes duration and lifecycle computed columns."
+    description: "Tasks enriched with Workday worker fields, employees_master source_system, and duration/lifecycle metrics (replaces legacy dept_mapping-only joins)."
     columns:
       - name: row_id
         description: "Surrogate key from stg_tasks."
@@ -16,57 +16,235 @@ models:
                 expression: ">= 0"
               config:
                 where: "duration_hours is not null"
+      - name: duration_minutes
+        description: "Duration in minutes; null when start/end missing."
+        tests:
+          - dbt_utils.expression_is_true:
+              arguments:
+                expression: ">= 0"
+              config:
+                where: "duration_minutes is not null"
+      - name: lifecycle_hours
+        description: "Hours from dateinitiated to dateended; null when dates missing."
+        tests:
+          - dbt_utils.expression_is_true:
+              arguments:
+                expression: ">= 0"
+              config:
+                where: "lifecycle_hours is not null"
+      - name: employee_source
+        description: "Source system from employees_master (Brokerage/Select/Genpact) when assignee matches employee_id."
 
-  - name: mart_daily_volume
-    description: "Daily task counts by task_date: total, completed, in progress."
+  - name: mart_team_capacity
+    description: "Active worker headcount and FTE/hours by cost center hierarchy and management level."
     columns:
-      - name: task_date
-        description: "Date (from dateinitiated)."
+      - name: department
+        description: "Cost center hierarchy (department grouping)."
         tests:
           - not_null
-          - unique
-      - name: total_tasks
-        description: "Total tasks initiated on that date."
+      - name: cost_center
+        description: "Cost center."
         tests:
           - not_null
-      - name: completed_tasks
-        description: "Count with taskstatus = 'Completed'."
-      - name: in_progress_tasks
-        description: "Count with taskstatus = 'In Progress'."
+      - name: management_level
+        description: "Management level."
+        tests:
+          - not_null
+      - name: headcount
+        description: "Count of active workers in the group."
+        tests:
+          - not_null
+          - dbt_utils.expression_is_true:
+              arguments:
+                expression: ">= 0"
+      - name: total_fte
+        description: "Sum of FTE."
+        tests:
+          - dbt_utils.expression_is_true:
+              arguments:
+                expression: ">= 0"
+              config:
+                where: "total_fte is not null"
+      - name: total_weekly_hours
+        description: "Sum of scheduled weekly hours."
+        tests:
+          - dbt_utils.expression_is_true:
+              arguments:
+                expression: ">= 0"
+              config:
+                where: "total_weekly_hours is not null"
 
-  - name: mart_drawer_performance
-    description: "Per-drawer metrics: task count, avg duration, completion rate."
+  - name: mart_team_demand
+    description: "Task volume and handle time by cost center and task initiation date (daily grain; column task_week)."
+    columns:
+      - name: department
+        description: "Cost center hierarchy from assigned worker (null when no worker match on LEFT JOIN)."
+      - name: cost_center
+        description: "Cost center from assigned worker (null when no worker match on LEFT JOIN)."
+      - name: task_week
+        description: "Calendar date from dateinitiated (daily grain)."
+        tests:
+          - not_null
+      - name: task_count
+        description: "Tasks with start and end times in the bucket."
+        tests:
+          - not_null
+          - dbt_utils.expression_is_true:
+              arguments:
+                expression: ">= 0"
+      - name: completed
+        description: "Subset with taskstatus Completed."
+        tests:
+          - not_null
+          - dbt_utils.expression_is_true:
+              arguments:
+                expression: ">= 0"
+      - name: avg_handle_hours
+        description: "Average handle time (start to end) in hours."
+        tests:
+          - dbt_utils.expression_is_true:
+              arguments:
+                expression: ">= 0"
+              config:
+                where: "avg_handle_hours is not null"
+
+  - name: mart_onshore_offshore
+    description: "Task metrics by employees_master source_system, flow, and step (onshore vs offshore style breakdown)."
+    columns:
+      - name: source_system
+        description: "Brokerage, Select, Genpact, or null if no employee match on LEFT JOIN."
+      - name: flowname
+        description: "Task flow name."
+        tests:
+          - not_null
+      - name: stepname
+        description: "Task step name."
+        tests:
+          - not_null
+      - name: task_count
+        description: "Task count with timing data."
+        tests:
+          - not_null
+          - dbt_utils.expression_is_true:
+              arguments:
+                expression: ">= 0"
+      - name: avg_handle_hours
+        description: "Average handle hours."
+        tests:
+          - dbt_utils.expression_is_true:
+              arguments:
+                expression: ">= 0"
+              config:
+                where: "avg_handle_hours is not null"
+      - name: completion_rate
+        description: "Completed share of tasks (0-100)."
+        tests:
+          - not_null
+          - dbt_utils.expression_is_true:
+              arguments:
+                expression: ">= 0"
+          - dbt_utils.expression_is_true:
+              arguments:
+                expression: "<= 100"
+
+  - name: mart_backlog
+    description: "Open / non-completed tasks by drawer, flow, step, and status with average age in days."
     columns:
       - name: drawer
         description: "Office/department code."
         tests:
           - not_null
-          - unique
-      - name: task_count
-        description: "Total tasks."
+      - name: flowname
+        description: "Flow name."
         tests:
           - not_null
-      - name: avg_duration_hours
-        description: "Average duration (starttime to endtime) in hours."
-      - name: completion_rate
-        description: "Percentage of tasks completed (0-100)."
+      - name: stepname
+        description: "Step name."
+        tests:
+          - not_null
+      - name: taskstatus
+        description: "Status (excludes Completed)."
+        tests:
+          - not_null
+      - name: task_count
+        description: "Number of tasks in the bucket."
+        tests:
+          - not_null
+          - dbt_utils.expression_is_true:
+              arguments:
+                expression: ">= 0"
+      - name: avg_age_days
+        description: "Average days from dateinitiated to current_date."
+        tests:
+          - dbt_utils.expression_is_true:
+              arguments:
+                expression: ">= 0"
+              config:
+                where: "avg_age_days is not null"
 
-  - name: mart_team_workload
-    description: "Per assigned team/division: task count, avg lifecycle, open tasks."
+  - name: mart_turnaround
+    description: "Completed-task performance: counts and average handle/lifecycle hours by drawer, flow, step."
     columns:
-      - name: assigned_team
-        description: "Team from employee lookup."
+      - name: drawer
+        description: "Office/department code."
         tests:
           - not_null
-      - name: assigned_division
-        description: "Division from employee lookup."
+      - name: flowname
+        description: "Flow name."
         tests:
           - not_null
-      - name: task_count
-        description: "Total tasks assigned to this team."
+      - name: stepname
+        description: "Step name."
         tests:
           - not_null
+      - name: completed_count
+        description: "Completed tasks with timing."
+        tests:
+          - not_null
+          - dbt_utils.expression_is_true:
+              arguments:
+                expression: ">= 0"
+      - name: avg_handle_hours
+        description: "Average start-to-end hours."
+        tests:
+          - dbt_utils.expression_is_true:
+              arguments:
+                expression: ">= 0"
+              config:
+                where: "avg_handle_hours is not null"
       - name: avg_lifecycle_hours
-        description: "Average hours from dateinitiated to dateended."
-      - name: open_tasks
-        description: "Tasks not yet completed."
+        description: "Average dateinitiated to dateended hours."
+        tests:
+          - dbt_utils.expression_is_true:
+              arguments:
+                expression: ">= 0"
+              config:
+                where: "avg_lifecycle_hours is not null"
+
+  - name: mart_daily_trend
+    description: "Daily opened vs completed tasks by drawer and net non-completed count for the day."
+    columns:
+      - name: task_date
+        description: "Date from dateinitiated."
+        tests:
+          - not_null
+      - name: drawer
+        description: "Office/department code."
+        tests:
+          - not_null
+      - name: tasks_opened
+        description: "Tasks initiated on task_date."
+        tests:
+          - not_null
+          - dbt_utils.expression_is_true:
+              arguments:
+                expression: ">= 0"
+      - name: tasks_completed
+        description: "Subset completed."
+        tests:
+          - not_null
+          - dbt_utils.expression_is_true:
+              arguments:
+                expression: ">= 0"
+      - name: net_backlog_change
+        description: "Opened minus completed for the day/drawer (can be negative)."

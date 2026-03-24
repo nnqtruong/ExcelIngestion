@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parent
 SCRIPTS_DIR = ROOT / "scripts"
 
 DEFAULT_DATASET = "tasks"
-ALL_DATASETS = ["tasks", "dept_mapping", "employees_master"]
+ALL_DATASETS = ["tasks", "dept_mapping", "employees_master", "workers"]
 
 STEPS = [
     (1, "01_convert", SCRIPTS_DIR / "01_convert.py"),
@@ -186,7 +186,7 @@ def main() -> int:
     parser.add_argument(
         "--all",
         action="store_true",
-        help="Run all datasets (tasks, dept_mapping, employees_master) in sequence.",
+        help="Run all datasets (tasks, dept_mapping, employees_master, workers) in sequence.",
     )
     args = parser.parse_args()
 

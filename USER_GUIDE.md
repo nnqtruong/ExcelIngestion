@@ -217,10 +217,13 @@ You'll see these tables:
 - `employees_master` - Unified employee dimension (HR + Genpact)
 - `tasks_with_dept` - Tasks joined with employee info (recommended)
 
-And these views (pre-calculated summaries):
-- `v_daily_volume` - Task counts by day
-- `v_drawer_summary` - Task counts by drawer
-- `v_carrier_workload` - Tasks by carrier
+And these pre-calculated analytics marts:
+- `mart_tasks_enriched` - Tasks with employee info and duration metrics
+- `mart_team_capacity` - Headcount by department
+- `mart_team_demand` - Task volume by department and date
+- `mart_backlog` - Open tasks with age
+- `mart_turnaround` - Completed task performance
+- `mart_daily_trend` - Daily opened vs completed
 
 Select the tables you need, click **Load**.
 

@@ -57,11 +57,12 @@ LAYER 2A: SQLITE (Python)     LAYER 2B: dbt-DuckDB (SQL)
 │ Tables:             │       │ dbt_crc/models/marts/      │
 │  - tasks            │       │ ┌──────────────────────────┐│
 │  - employees        │       │ │ mart_tasks_enriched.sql  ││
-│ Views:              │       │ │ (3x employee JOINs)      ││
-│  - v_task_duration  │       │ ├──────────────────────────┤│
-│  - v_daily_volume   │       │ │ mart_daily_volume.sql    ││
-│  - v_drawer_summary │       │ │ mart_drawer_performance  ││
-│  - etc.             │       │ │ mart_team_workload.sql   ││
+│  - employees_master │       │ │ mart_team_capacity.sql   ││
+│ Marts (synced):     │       │ │ mart_team_demand.sql     ││
+│  - mart_tasks_      │       │ │ mart_onshore_offshore    ││
+│      enriched       │       │ │ mart_backlog.sql         ││
+│  - mart_team_demand │       │ │ mart_turnaround.sql      ││
+│  - etc.             │       │ │ mart_daily_trend.sql     ││
 └─────────────────────┘       │ └──────────────────────────┘│
                               │ (GOLD LAYER - Business     │
                               │  metrics, aggregations)    │
@@ -72,11 +73,16 @@ LAYER 2A: SQLITE (Python)     LAYER 2B: dbt-DuckDB (SQL)
                               │ powerbi/{env}_warehouse    │
                               │         .duckdb            │
                               │ Tables:                    │
-                              │  - stg_tasks               │
-                              │  - stg_employees           │
+                              │  - tasks, employees,       │
+                              │    employees_master        │
+                              │ Marts:                     │
                               │  - mart_tasks_enriched     │
-                              │  - mart_daily_volume       │
-                              │  - mart_drawer_performance │
+                              │  - mart_team_capacity      │
+                              │  - mart_team_demand        │
+                              │  - mart_onshore_offshore   │
+                              │  - mart_backlog            │
+                              │  - mart_turnaround         │
+                              │  - mart_daily_trend        │
                               │  - mart_team_workload      │
                               └────────────┬───────────────┘
                                            │
@@ -135,14 +141,24 @@ LAYER 2A: SQLITE (Python)     LAYER 2B: dbt-DuckDB (SQL)
 
 ### dbt Models
 
-| Model | Type | Source | Description |
-|-------|------|--------|-------------|
-| `stg_tasks` | view | `combined.parquet` | Normalize join keys, apply value maps |
-| `stg_employees` | view | `combined.parquet` | Clean employee data |
-| `mart_tasks_enriched` | view | `stg_tasks` + `stg_employees` | 3x JOINs, computed columns |
-| `mart_daily_volume` | view | `mart_tasks_enriched` | Daily task counts |
-| `mart_drawer_performance` | view | `mart_tasks_enriched` | Drawer metrics |
-| `mart_team_workload` | view | `mart_tasks_enriched` | Team workload metrics |
+**Staging Models:**
+| Model | Source | Description |
+|-------|--------|-------------|
+| `stg_tasks` | tasks/combined.parquet | Normalize join keys, apply value maps |
+| `stg_employees` | dept_mapping/combined.parquet | Clean employee data |
+| `stg_workers` | workers/combined.parquet | Workday worker data |
+| `stg_employees_master` | employees_master/combined.parquet | Unified employee dimension |
+
+**Mart Models:**
+| Model | Description |
+|-------|-------------|
+| `mart_tasks_enriched` | Tasks with worker fields, employee source, duration metrics |
+| `mart_team_capacity` | Headcount and FTE by cost center hierarchy |
+| `mart_team_demand` | Task volume by cost center and date (daily) |
+| `mart_onshore_offshore` | Task metrics by employee source system |
+| `mart_backlog` | Open tasks by drawer/flow/step with age |
+| `mart_turnaround` | Completed-task handle/lifecycle hours |
+| `mart_daily_trend` | Daily opened vs completed by drawer |
 
 ---
 
