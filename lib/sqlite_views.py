@@ -28,8 +28,13 @@ LEGACY_VIEWS_TO_DROP = (
     "v_tasks_with_workers",
 )
 
-# Marts with large row counts: verify with LIMIT 1 instead of full COUNT(*).
-_SLOW_VERIFY_VIEWS = frozenset({"mart_tasks_enriched"})
+# Marts that join tasks to workers: verify with LIMIT 1 instead of full COUNT(*).
+# These are slow on SQLite with millions of task rows.
+_SLOW_VERIFY_VIEWS = frozenset({
+    "mart_tasks_enriched",
+    "mart_team_demand",
+    "mart_turnaround",
+})
 
 
 def expected_mart_view_names() -> list[str]:
