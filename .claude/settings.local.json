@@ -7,7 +7,9 @@
       "Bash(\"c:/Users/quang/CRC Code/ExcelIngestion/.venv/Scripts/python.exe\" run_pipeline.py --all --dry-run)",
       "Bash(\"c:/Users/quang/CRC Code/ExcelIngestion/.venv/Scripts/python.exe\" run_pipeline.py --dataset workers --dry-run)",
       "Bash(\"c:/Users/quang/CRC Code/ExcelIngestion/.venv/Scripts/python.exe\" run_pipeline.py --all)",
-      "Bash(\"c:/Users/quang/CRC Code/ExcelIngestion/.venv/Scripts/python.exe\" run_pipeline.py --dataset tasks --from-step 9)"
+      "Bash(\"c:/Users/quang/CRC Code/ExcelIngestion/.venv/Scripts/python.exe\" run_pipeline.py --dataset tasks --from-step 9)",
+      "Bash(dir /s /b \"c:\\Users\\quang\\CRC Code\\ExcelIngestion\\datasets\\prod\\workers\")",
+      "Bash(\"c:/Users/quang/CRC Code/ExcelIngestion/.venv/Scripts/python.exe\" -c \"\nfrom pathlib import Path\n\n# Search for any Workers.xlsx or workers-related parquet in the project\nproject = Path(''c:/Users/quang/CRC Code/ExcelIngestion'')\nprint(''Workers Excel files:'')\nfor f in project.rglob(''*[Ww]orker*.xlsx''):\n    print(f''  {f.relative_to(project)}'')\n\nprint()\nprint(''Workers parquet files:'')\nfor f in project.rglob(''*[Ww]orker*.parquet''):\n    print(f''  {f.relative_to(project)}'')\n\nprint()\nprint(''Combined parquets with worker in path:'')\nfor f in project.rglob(''**/workers/**/combined.parquet''):\n    print(f''  {f.relative_to(project)}'')\n\")"
     ],
     "deny": [],
     "ask": []

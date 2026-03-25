@@ -23,11 +23,19 @@ column_aliases:
   "Last Termination Date": last_termination_date
   "Scheduled Weekly Hours": scheduled_weekly_hours
   "FTE": fte
+  # Full/Part Time variations
   "Full / Part Time": full_part_time
+  "Full/Part Time": full_part_time
+  "Full-Part Time": full_part_time
+  "Full Part Time": full_part_time
+  "FullPartTime": full_part_time
+  "Time Type": full_part_time
   "Pay Rate Type": pay_rate_type
   "Exempt / Non-Exempt": exempt_status
+  "Exempt/Non-Exempt": exempt_status
   "Worker Type": worker_type
   "Worker Sub-Type": worker_sub_type
+  "Worker SubType": worker_sub_type
   "Employee Type": employee_type
   "Work Email": work_email
   "Direct Manager": direct_manager
@@ -114,7 +122,7 @@ columns:
   last_termination_date:
     dtype: datetime64
     nullable: true
-    max_null_rate: 1.0
+    max_null_rate: 1.0  # prod may be ~98% null; dev fixtures are 100% null
 
   scheduled_weekly_hours:
     dtype: float64
@@ -127,10 +135,12 @@ columns:
   full_part_time:
     dtype: string
     nullable: true
+    max_null_rate: 0.05
 
   pay_rate_type:
     dtype: string
     nullable: true
+    max_null_rate: 0.35
 
   exempt_status:
     dtype: string
@@ -147,6 +157,7 @@ columns:
   employee_type:
     dtype: string
     nullable: true
+    max_null_rate: 0.35
 
   work_email:
     dtype: string
