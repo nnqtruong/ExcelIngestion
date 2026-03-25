@@ -28,15 +28,6 @@ LEGACY_VIEWS_TO_DROP = (
     "v_tasks_with_workers",
 )
 
-# Marts that join tasks to workers: verify with LIMIT 1 instead of full COUNT(*).
-# These are slow on SQLite with millions of task rows.
-_SLOW_VERIFY_VIEWS = frozenset({
-    "mart_tasks_enriched",
-    "mart_team_demand",
-    "mart_turnaround",
-})
-
-
 def expected_mart_view_names() -> list[str]:
     """Names of mart views that sync should create (from MARTS_DIR/*.sql)."""
     if not MARTS_DIR.is_dir():
@@ -56,20 +47,19 @@ def _drop_legacy_views(conn: sqlite3.Connection, log: logging.Logger) -> None:
 
 
 def verify_views(conn: sqlite3.Connection, view_names: list[str], log: logging.Logger) -> dict:
-    """Verify views are queryable; return {view_name: row_count or sentinel}."""
+    """Verify views are queryable with LIMIT 1; return {view_name: 1 if has rows, 0 if empty, -1 on error}.
+
+    Full COUNT(*) is too slow on SQLite with millions of task rows in joined views.
+    We only verify existence and that the view returns at least one row.
+    """
     cursor = conn.cursor()
     results: dict[str, int] = {}
     for view_name in view_names:
         try:
-            if view_name in _SLOW_VERIFY_VIEWS:
-                cursor.execute(f'SELECT 1 FROM "{view_name}" LIMIT 1')
-                row = cursor.fetchone()
-                results[view_name] = 1 if row else 0
-                log.info("View %s: verified (skipped full count for performance)", view_name)
-            else:
-                cursor.execute(f'SELECT COUNT(*) FROM "{view_name}"')
-                results[view_name] = cursor.fetchone()[0]
-                log.info("View %s: %d rows", view_name, results[view_name])
+            cursor.execute(f'SELECT 1 FROM "{view_name}" LIMIT 1')
+            row = cursor.fetchone()
+            results[view_name] = 1 if row else 0
+            log.info("View %s: verified", view_name)
         except sqlite3.Error as e:
             log.warning("Failed to query view %s: %s", view_name, e)
             results[view_name] = -1

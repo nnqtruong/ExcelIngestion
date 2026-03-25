@@ -24,7 +24,12 @@ if __name__ == "__main__":
     print(f"\nSQLite Views Summary:")
     print(f"  Database: {db_path}")
     print(f"  Views created: {len(results)}")
-    print(f"\n  View row counts:")
-    for view_name, count in results.items():
-        print(f"    {view_name}: {count} rows")
+    print(f"\n  View status:")
+    for view_name, status in results.items():
+        if status == 1:
+            print(f"    {view_name}: OK")
+        elif status == 0:
+            print(f"    {view_name}: empty")
+        else:
+            print(f"    {view_name}: ERROR")
     log.info("Finished creating SQLite views in %s", db_path.name)
