@@ -1,7 +1,9 @@
 {
   "permissions": {
     "allow": [
-      "Bash(\"c:/Users/quang/CRC Code/ExcelIngestion/.venv/Scripts/python.exe\" run_pipeline.py --dataset tasks --from-step 10)"
+      "Bash(\"c:/Users/quang/CRC Code/ExcelIngestion/.venv/Scripts/python.exe\" run_pipeline.py --dataset tasks --from-step 10)",
+      "Bash(cd:*)",
+      "Bash(cat:*)"
     ],
     "deny": [],
     "ask": []
