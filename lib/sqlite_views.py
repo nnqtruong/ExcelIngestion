@@ -105,6 +105,11 @@ SQLITE_MART_VIEWS: dict[str, str] = {
     """,
 }
 
+# Set to None to enable all marts. List names to enable only those.
+ENABLED_MARTS: set[str] | None = {
+    "mart_tasks_enriched",
+    "mart_team_capacity",
+}
 
 # Legacy v_* views removed in analytics restructure; drop if still present.
 LEGACY_VIEWS_TO_DROP = (
@@ -214,6 +219,14 @@ SELECT
 FROM stg_tasks t{worker_join}{employee_join};
 """
 
+        log.info("Pre-indexing join keys for _stg_tasks_enriched creation...")
+        cursor.executescript("""
+            CREATE INDEX IF NOT EXISTS idx_pre_stg_assignedto ON stg_tasks(assignedto);
+            CREATE INDEX IF NOT EXISTS idx_pre_workers_empid ON workers(employee_id);
+            CREATE INDEX IF NOT EXISTS idx_pre_emp_empid ON employees_master(employee_id);
+        """)
+        conn.commit()
+
         t0 = time.perf_counter()
         cursor.executescript(create_sql)
         conn.commit()
@@ -255,6 +268,9 @@ def create_sqlite_mart_views(db_path: Path, log: logging.Logger) -> list[str]:
     conn = sqlite3.connect(db_path)
     try:
         for view_name in sorted(SQLITE_MART_VIEWS):
+            if ENABLED_MARTS is not None and view_name not in ENABLED_MARTS:
+                log.info("Skipping mart view (not enabled): %s", view_name)
+                continue
             body = SQLITE_MART_VIEWS[view_name].strip()
             try:
                 ddl = f'DROP VIEW IF EXISTS "{view_name}";\nCREATE VIEW "{view_name}" AS\n{body}'
