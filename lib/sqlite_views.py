@@ -220,11 +220,11 @@ FROM stg_tasks t{worker_join}{employee_join};
 """
 
         log.info("Pre-indexing join keys for _stg_tasks_enriched creation...")
-        cursor.executescript("""
-            CREATE INDEX IF NOT EXISTS idx_pre_stg_assignedto ON stg_tasks(assignedto);
-            CREATE INDEX IF NOT EXISTS idx_pre_workers_empid ON workers(employee_id);
-            CREATE INDEX IF NOT EXISTS idx_pre_emp_empid ON employees_master(employee_id);
-        """)
+        # Only index actual tables, not views (stg_tasks is a view)
+        if has_workers:
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_pre_workers_empid ON workers(employee_id)")
+        if has_employees_master:
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_pre_emp_empid ON employees_master(employee_id)")
         conn.commit()
 
         t0 = time.perf_counter()
