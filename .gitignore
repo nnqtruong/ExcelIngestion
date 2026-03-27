@@ -4,6 +4,9 @@
 # Pipeline outputs and logs
 logs/
 clean/
+
+# Fingerprint state (machine-specific)
+**/_state/
 analytics/
 report/
 

@@ -120,6 +120,8 @@ def run_step(
     dataset_root: Path,
     pipeline_env: str,
     log: logging.Logger,
+    pipeline_from_step: int = 1,
+    pipeline_force: bool = False,
 ) -> bool:
     """Run one step via subprocess with PIPELINE_DATASET_ROOT and PIPELINE_ENV set. Return True if exit code 0."""
     if not script_path.exists():
@@ -129,6 +131,11 @@ def run_step(
     env = os.environ.copy()
     env["PIPELINE_DATASET_ROOT"] = str(dataset_root)
     env["PIPELINE_ENV"] = pipeline_env
+    env["PIPELINE_FROM_STEP"] = str(pipeline_from_step)
+    if pipeline_force:
+        env["PIPELINE_FORCE"] = "1"
+    else:
+        env.pop("PIPELINE_FORCE", None)
     try:
         # Stream output in real-time instead of capturing
         result = subprocess.run(
@@ -192,6 +199,11 @@ def main() -> int:
         action="store_true",
         help="Run all datasets (tasks, dept_mapping, employees_master, workers) in sequence.",
     )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Reprocess all raw Excel files (ignore fingerprints); set PIPELINE_FORCE=1 for each step.",
+    )
     args = parser.parse_args()
 
     # Handle --all flag: run all datasets in sequence
@@ -246,7 +258,16 @@ def main() -> int:
                 logs_dir = dataset_root / "logs"
                 log = setup_logging(logs_dir)
                 step_num, name, script_path = STEP_VIEWS
-                if not run_step(step_num, name, script_path, dataset_root, args.env, log):
+                if not run_step(
+                    step_num,
+                    name,
+                    script_path,
+                    dataset_root,
+                    args.env,
+                    log,
+                    args.from_step,
+                    args.force,
+                ):
                     log.error("Step 10 (sqlite_views) failed.")
                     failed.append("step_10_views")
             except FileNotFoundError:
@@ -306,7 +327,16 @@ def run_single_dataset(pipeline_path: Path, args: argparse.Namespace, skip_step_
     log.info("Dataset root: %s", dataset_root)
     log.info("Starting pipeline from step %d%s", args.from_step, " (skipping step 10)" if skip_step_10 else "")
     for step_num, name, script_path in steps_to_run:
-        if not run_step(step_num, name, script_path, dataset_root, args.env, log):
+        if not run_step(
+            step_num,
+            name,
+            script_path,
+            dataset_root,
+            args.env,
+            log,
+            args.from_step,
+            args.force,
+        ):
             log.error("Pipeline stopped: step %d (%s) failed.", step_num, name)
             remove_analytics_output(dataset_root, log)
             return 1
