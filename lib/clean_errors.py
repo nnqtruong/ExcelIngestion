@@ -184,7 +184,7 @@ def run_clean_errors(
         raise FileNotFoundError(f"No clean/ directory at {clean_dir}")
     parquet_files = [
         p for p in sorted(clean_dir.glob("*.parquet"))
-        if not p.name.endswith("_errors.parquet")
+        if not p.name.endswith("_errors.parquet") and not p.name.startswith("tmp")
     ]
     if not parquet_files:
         return 0

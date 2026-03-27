@@ -37,7 +37,7 @@ def prune_orphan_clean_parquets(dataset_root: Path) -> list[Path]:
                 raw_stems.add(p.stem)
     removed: list[Path] = []
     for pq in sorted(clean_dir.glob("*.parquet")):
-        if pq.name.endswith("_errors.parquet"):
+        if pq.name.endswith("_errors.parquet") or pq.name.startswith("tmp"):
             continue
         if pq.stem not in raw_stems:
             try:

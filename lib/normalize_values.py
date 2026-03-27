@@ -1,5 +1,8 @@
 """Step 05: Apply value_maps.yaml to standardize categorical values (DuckDB)."""
 import logging
+import os
+import shutil
+import tempfile
 from pathlib import Path
 
 import duckdb
@@ -72,11 +75,24 @@ def process_file(path: Path, value_maps: dict, log: logging.Logger) -> None:
             log.warning("value_maps[%s] is not a dict, skipping", col)
 
     select_sql = ", ".join(select_parts)
-    conn.execute(f"""
-        COPY (SELECT {select_sql} FROM read_parquet('{in_sql}'))
-        TO '{in_sql}' (FORMAT PARQUET)
-    """)
-    conn.close()
+
+    # Write to temp file first, then replace original (Windows file locking workaround)
+    tmp_fd, tmp_path_str = tempfile.mkstemp(suffix=".parquet", dir=path.parent)
+    os.close(tmp_fd)
+    tmp_path = Path(tmp_path_str)
+    tmp_sql = _escape_sql(tmp_path.resolve().as_posix())
+
+    try:
+        conn.execute(f"""
+            COPY (SELECT {select_sql} FROM read_parquet('{in_sql}'))
+            TO '{tmp_sql}' (FORMAT PARQUET)
+        """)
+        conn.close()
+        shutil.move(str(tmp_path), str(path))
+    finally:
+        # Clean up temp file if it still exists (e.g., on error)
+        if tmp_path.exists():
+            tmp_path.unlink()
 
     rss_after_mb = proc.memory_info().rss / 1024 / 1024
     log.info("Normalize values %s: memory %.1f -> %.1f MB", path.name, rss_before_mb, rss_after_mb)
@@ -96,7 +112,7 @@ def run_normalize_values(
         raise FileNotFoundError(f"No clean/ directory at {clean_dir}")
     parquet_files = [
         p for p in sorted(clean_dir.glob("*.parquet"))
-        if not p.name.endswith("_errors.parquet")
+        if not p.name.endswith("_errors.parquet") and not p.name.startswith("tmp")
     ]
     if not parquet_files:
         return 0

@@ -86,7 +86,7 @@ def run_add_missing_columns(clean_dir: Path, schema_path: Path, log: logging.Log
     if not clean_dir.is_dir():
         raise FileNotFoundError(f"No clean/ directory at {clean_dir}")
     parquet_files = sorted(clean_dir.glob("*.parquet"))
-    parquet_files = [p for p in parquet_files if not p.name.endswith("_errors.parquet")]
+    parquet_files = [p for p in parquet_files if not p.name.endswith("_errors.parquet") and not p.name.startswith("tmp")]
     if not parquet_files:
         return 0
     for path in parquet_files:

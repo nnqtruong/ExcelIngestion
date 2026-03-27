@@ -10,9 +10,9 @@ from lib.logging_util import monitor_step
 
 
 def get_parquet_files(clean_dir: Path) -> list[Path]:
-    """Return sorted list of Parquet paths (exclude _errors)."""
+    """Return sorted list of Parquet paths (exclude _errors and tmp_*)."""
     all_parquet = sorted(clean_dir.glob("*.parquet"))
-    return [p for p in all_parquet if not p.name.endswith("_errors.parquet")]
+    return [p for p in all_parquet if not p.name.endswith("_errors.parquet") and not p.name.startswith("tmp")]
 
 
 def _escape_sql(s: str) -> str:
