@@ -1,5 +1,8 @@
 """Step 04: Cast columns to schema types; flag failing rows to errors/ sidecar (DuckDB)."""
 import logging
+import os
+import shutil
+import tempfile
 from pathlib import Path
 
 import duckdb
@@ -123,32 +126,45 @@ def process_file(
     error_file = errors_dir / f"{path.stem}_errors.parquet"
     err_path_sql = _escape_sql((errors_dir / f"{path.stem}_errors.parquet").resolve().as_posix())
 
-    if n_error_rows == 0:
-        # All rows good: write casted output, remove error file if present
+    # Write to temp file first, then replace original (Windows file locking workaround)
+    tmp_fd, tmp_path_str = tempfile.mkstemp(suffix=".parquet", dir=path.parent)
+    os.close(tmp_fd)
+    tmp_path = Path(tmp_path_str)
+    tmp_sql = _escape_sql(tmp_path.resolve().as_posix())
+
+    try:
+        if n_error_rows == 0:
+            # All rows good: write casted output to temp, remove error file if present
+            conn.execute(f"""
+                COPY (SELECT {select_sql} FROM read_parquet('{in_sql}'))
+                TO '{tmp_sql}' (FORMAT PARQUET)
+            """)
+            conn.close()
+            shutil.move(str(tmp_path), str(path))
+            if error_file.exists():
+                error_file.unlink()
+                log.info("%s: removed empty error file %s", path.name, error_file.name)
+            rss_after_mb = proc.memory_info().rss / 1024 / 1024
+            log.info("Clean errors %s: memory %.1f -> %.1f MB", path.name, rss_before_mb, rss_after_mb)
+            return
+
+        # Write bad rows (original values) to error sidecar first (while we still have full file)
+        errors_dir.mkdir(parents=True, exist_ok=True)
         conn.execute(f"""
-            COPY (SELECT {select_sql} FROM read_parquet('{in_sql}'))
-            TO '{in_sql}' (FORMAT PARQUET)
+            COPY (SELECT * FROM read_parquet('{in_sql}') WHERE {bad_where})
+            TO '{err_path_sql}' (FORMAT PARQUET)
+        """)
+        # Then write good rows (casted) to temp file
+        conn.execute(f"""
+            COPY (SELECT {select_sql} FROM read_parquet('{in_sql}') WHERE {good_where})
+            TO '{tmp_sql}' (FORMAT PARQUET)
         """)
         conn.close()
-        if error_file.exists():
-            error_file.unlink()
-            log.info("%s: removed empty error file %s", path.name, error_file.name)
-        rss_after_mb = proc.memory_info().rss / 1024 / 1024
-        log.info("Clean errors %s: memory %.1f -> %.1f MB", path.name, rss_before_mb, rss_after_mb)
-        return
-
-    # Write bad rows (original values) to error sidecar first (while we still have full file)
-    errors_dir.mkdir(parents=True, exist_ok=True)
-    conn.execute(f"""
-        COPY (SELECT * FROM read_parquet('{in_sql}') WHERE {bad_where})
-        TO '{err_path_sql}' (FORMAT PARQUET)
-    """)
-    # Then write good rows (casted) to path (overwrites input)
-    conn.execute(f"""
-        COPY (SELECT {select_sql} FROM read_parquet('{in_sql}') WHERE {good_where})
-        TO '{in_sql}' (FORMAT PARQUET)
-    """)
-    conn.close()
+        shutil.move(str(tmp_path), str(path))
+    finally:
+        # Clean up temp file if it still exists (e.g., on error)
+        if tmp_path.exists():
+            tmp_path.unlink()
 
     log.info("%s: %d row(s) flagged to errors/%s", path.name, n_error_rows, error_file.name)
     rss_after_mb = proc.memory_info().rss / 1024 / 1024
