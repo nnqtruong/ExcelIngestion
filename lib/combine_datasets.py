@@ -39,19 +39,44 @@ def combine_files(
 
     conn = duckdb.connect()
 
-    # Row counts per file (DuckDB reads Parquet without loading full file into RAM)
+    # Row counts and column counts per file - detect schema mismatches early
     total_from_files = 0
+    files_to_combine = []
+    reference_cols = None
     for f in files:
         path_sql = _escape_sql(f.resolve().as_posix())
         n = conn.execute(f"SELECT COUNT(*) FROM read_parquet('{path_sql}')").fetchone()[0]
+        cols = [d[0] for d in conn.execute(f"SELECT * FROM read_parquet('{path_sql}') LIMIT 0").description]
         total_from_files += n
-        log.info("Before combine: %s - %d rows", f.name, n)
+        log.info("Before combine: %s - %d rows, %d columns", f.name, n, len(cols))
+
+        if n == 0:
+            log.warning("Skipping %s (0 rows - likely all rows went to errors)", f.name)
+            continue
+
+        if reference_cols is None:
+            reference_cols = set(cols)
+        else:
+            current_cols = set(cols)
+            if current_cols != reference_cols:
+                missing = reference_cols - current_cols
+                extra = current_cols - reference_cols
+                if missing:
+                    log.warning("%s: missing columns %s", f.name, missing)
+                if extra:
+                    log.warning("%s: extra columns %s", f.name, extra)
+
+        files_to_combine.append(f)
+
     log.info("Before combine: total - %d rows", total_from_files)
 
+    if not files_to_combine:
+        raise ValueError("No Parquet files with data to combine (all files have 0 rows)")
+
     # Union all with source tracking; overwrite _source_file/_ingested_at if present
-    # EXCLUDE avoids duplicate column names when parquet already has these columns
+    # Use UNION ALL BY NAME to handle minor column differences gracefully
     union_parts = []
-    for f in files:
+    for f in files_to_combine:
         path_sql = _escape_sql(f.resolve().as_posix())
         name_sql = _escape_sql(f.name)
         # If parquet has _source_file/_ingested_at (from add_missing_columns), overwrite them
@@ -60,7 +85,7 @@ def combine_files(
             f"'{name_sql}' AS _source_file, CURRENT_TIMESTAMP AS _ingested_at "
             f"FROM read_parquet('{path_sql}')"
         )
-    union_query = " UNION ALL ".join(union_parts)
+    union_query = " UNION ALL BY NAME ".join(union_parts)
 
     # Add row_id and write directly to Parquet (streaming; no full dataset in memory)
     out_sql = _escape_sql(str(output_path.as_posix()))
