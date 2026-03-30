@@ -1,0 +1,23 @@
+# Dataset: revenue (dev)
+# Environment path: datasets/dev/revenue — run with: --dataset revenue
+name: revenue
+environment: dev
+description: "Monthly revenue data by broker/team/division"
+
+steps:
+  - 01_convert
+  - 02_normalize_schema
+  - 03_add_missing_columns
+  - 04_clean_errors
+  - 06_combine_datasets
+  - 08_validate
+  - 09_export_sqlite
+
+sqlite:
+  database: warehouse.db
+  table: revenue
+  indexes:
+    - year
+    - month
+    - broker_name
+    - division_name

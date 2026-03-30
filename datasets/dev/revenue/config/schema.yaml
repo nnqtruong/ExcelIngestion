@@ -1,0 +1,75 @@
+# Revenue data — single file, explicit column aliases.
+
+column_aliases:
+  "Year": year
+  "Quarter": quarter
+  "AcctCur": acct_cur
+  "Month": month
+  "Subdivision": subdivision
+  "Division Name": division_name
+  "Team Name": team_name
+  "Broker Name": broker_name
+  "Revenue": revenue
+
+columns:
+  year:
+    dtype: int64
+    nullable: false
+
+  quarter:
+    dtype: string
+    nullable: false
+
+  acct_cur:
+    dtype: string
+    nullable: false
+
+  month:
+    dtype: int64
+    nullable: false
+
+  subdivision:
+    dtype: string
+    nullable: false
+
+  division_name:
+    dtype: string
+    nullable: false
+
+  team_name:
+    dtype: string
+    nullable: false
+
+  broker_name:
+    dtype: string
+    nullable: false
+
+  revenue:
+    dtype: float64
+    nullable: false
+
+  _source_file:
+    dtype: string
+    nullable: true
+
+  _ingested_at:
+    dtype: datetime64
+    nullable: true
+
+column_order:
+  - year
+  - quarter
+  - acct_cur
+  - month
+  - subdivision
+  - division_name
+  - team_name
+  - broker_name
+  - revenue
+  - _source_file
+  - _ingested_at
+
+validation:
+  max_null_rate: 0.05
+  max_duplicate_rate: 0.10
+  min_row_count: 1
