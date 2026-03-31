@@ -1,5 +1,6 @@
 # Virtual environment
 .venv/
+.venv-dbt/
 
 # Pipeline outputs and logs
 logs/

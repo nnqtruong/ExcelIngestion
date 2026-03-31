@@ -1,7 +1,7 @@
 # Excel Ingestion Pipeline - Current State (AI Context Document)
 
 > **Purpose**: This document provides full context for LLMs to understand and assist with this codebase.
-> **Last Updated**: 2025-03-24
+> **Last Updated**: 2026-03-31
 
 ---
 
@@ -13,9 +13,24 @@ A 10-step data pipeline that converts Excel files into clean, validated Parquet 
 - Handles 500K+ row Excel files with low memory usage (chunked processing)
 - Processes 6M+ total rows across 12 files in production
 - Dev/prod environment separation
-- Multi-dataset support (tasks, dept_mapping, employees_master)
+- Multi-dataset support (tasks, dept_mapping, employees_master, workers, revenue)
 - Column aliasing for multi-schema source files
 - Power BI integration via DuckDB ODBC
+- **Incremental processing** with file fingerprinting (skip unchanged files)
+- **dbt analytics layer** with staging views and mart tables
+
+---
+
+## Two Virtual Environments
+
+This project requires **two separate Python virtual environments** because dbt does not support Python 3.14:
+
+| venv | Python | Purpose | Activate |
+|------|--------|---------|----------|
+| `.venv` | 3.14 | Main pipeline (`run_pipeline.py`) | `.venv\Scripts\activate` |
+| `.venv-dbt` | 3.12 | dbt models (`dbt run`) | `.venv-dbt\Scripts\activate` |
+
+**Important**: Always activate the correct venv before running commands!
 
 ---
 
@@ -68,6 +83,9 @@ ExcelIngestion/
 │   ├── create_fixtures.py       # Generate mock task Excel files
 │   └── create_dept_fixtures.py  # Generate mock employee Excel file
 │
+├── .venv/                       # Main pipeline venv (Python 3.14)
+├── .venv-dbt/                   # dbt venv (Python 3.12)
+│
 ├── datasets/                    # Data organized by environment
 │   ├── dev/                     # Development environment (default)
 │   │   ├── tasks/
@@ -80,26 +98,17 @@ ExcelIngestion/
 │   │   │   ├── clean/           # Intermediate Parquet files
 │   │   │   ├── errors/          # Rows that failed type casting
 │   │   │   ├── analytics/       # combined.parquet output
-│   │   │   └── logs/            # pipeline.log, validation_report.json
-│   │   ├── dept_mapping/
-│   │   │   ├── pipeline.yaml
-│   │   │   ├── config/
-│   │   │   ├── raw/
-│   │   │   ├── clean/
-│   │   │   ├── errors/
-│   │   │   ├── analytics/
-│   │   │   └── logs/
-│   │   └── employees_master/    # Unified employee dimension (3 sources)
-│   │       ├── pipeline.yaml
-│   │       ├── config/          # schema.yaml with column_aliases
-│   │       ├── raw/             # Brokerage.xlsx, Select.xlsx, Genpact.xlsx
-│   │       ├── clean/
-│   │       ├── errors/
-│   │       ├── analytics/
-│   │       └── logs/
+│   │   │   ├── logs/            # pipeline.log, validation_report.json
+│   │   │   └── _state/          # Fingerprint state (ingestion_state.json)
+│   │   ├── dept_mapping/        # Employee/department mapping
+│   │   ├── employees_master/    # Unified employee dimension (3 sources)
+│   │   ├── workers/             # Workday HR worker data
+│   │   └── revenue/             # Monthly revenue by broker/team
 │   └── prod/                    # Production environment
 │       ├── tasks/               # Same structure as dev
-│       └── dept_mapping/
+│       ├── dept_mapping/
+│       ├── workers/
+│       └── revenue/
 │
 ├── analytics/                   # Shared SQLite warehouse
 │   ├── dev_warehouse.db         # Dev environment (PIPELINE_ENV=dev)
@@ -359,8 +368,14 @@ dbt is the single source of truth for analytics. Mart SQL models are defined in 
 
 ### Running dbt
 
+**Important**: dbt requires Python 3.12, not the main venv's Python 3.14.
+
 ```bash
+# Activate dbt venv first
+.venv-dbt\Scripts\activate
+
 cd dbt_crc
+dbt deps     # Install packages (first time only)
 dbt run      # Build all models
 dbt test     # Run data tests
 dbt build    # Run + test
@@ -432,15 +447,19 @@ pyodbc
 
 2. **Error rows copied, not filtered**: Bad rows go to `errors/` directory for inspection but don't block the pipeline.
 
-3. **Idempotent**: Rerunning processes everything from scratch.
+3. **Incremental with fingerprinting**: File MD5 hashes stored in `_state/ingestion_state.json`. Step 01 skips unchanged files. Use `--force` to reprocess all.
 
-4. **Shared warehouse**: Both datasets write to single `analytics/warehouse.db` for cross-dataset joins.
+4. **Shared warehouse**: All datasets write to single `analytics/warehouse.db` for cross-dataset joins.
 
 5. **Environment separation**: Dev and prod have completely separate data directories and output files.
 
 6. **Default is always dev**: Running without environment flags uses dev to prevent accidental production changes.
 
 7. **Column aliasing**: Multi-schema sources (like employees_master) use `column_aliases` in schema.yaml to map different source column names to canonical names during step 02.
+
+8. **Two Python venvs**: Main pipeline uses Python 3.14 (`.venv`), dbt uses Python 3.12 (`.venv-dbt`) due to dbt compatibility requirements.
+
+9. **Windows DuckDB workaround**: Write to temp file then `shutil.move()` to avoid "Access is denied" file locking errors.
 
 ---
 

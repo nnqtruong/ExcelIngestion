@@ -77,6 +77,39 @@ python powerbi/setup_odbc.py
 
 In Power BI, use the connection string for your environment (see [Dev/Prod Environments](#devprod-environments)). Default is **dev** (`powerbi/dev_warehouse.duckdb`).
 
+## dbt Setup (Separate Python Environment)
+
+dbt requires Python 3.10-3.12. Since the main `.venv` uses Python 3.14, a separate venv is required:
+
+### Create dbt venv (one-time)
+
+```bash
+py -3.12 -m venv .venv-dbt
+.venv-dbt\Scripts\activate
+pip install dbt-core dbt-duckdb
+```
+
+### Running dbt
+
+```bash
+# Always activate the dbt venv first
+.venv-dbt\Scripts\activate
+
+cd dbt_crc
+dbt run      # Build all models
+dbt test     # Run data tests
+dbt build    # Run + test
+```
+
+### Two venvs, two purposes
+
+| venv | Python | Purpose |
+|------|--------|---------|
+| `.venv` | 3.14 | Main pipeline (`run_pipeline.py`) |
+| `.venv-dbt` | 3.12 | dbt models (`dbt run`) |
+
+Do NOT install dbt in the main `.venv` — it will fail.
+
 ## Dev/Prod Environments
 
 **Default is always `dev`** so that running the pipeline or Power BI scripts without setting an environment uses development data and files by default.

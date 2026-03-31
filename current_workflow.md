@@ -202,26 +202,61 @@ LAYER 2A: SQLITE (Python)     LAYER 2B: dbt-DuckDB (SQL)
 - **Key Feature**: Uses `column_aliases` in schema.yaml to unify different column names
 - **Columns**: 24 (including source_system to track row origin)
 
+### 4. Workers
+- **Source**: Workday HR worker export
+- **Files**: 1 Excel file (~4K rows)
+- **Primary Key**: `employee_id`
+- **SQLite Table**: `workers`
+- **dbt Models**: `stg_workers` → `mart_team_capacity`
+
+### 5. Revenue
+- **Source**: Monthly revenue by broker/team/division
+- **Files**: 1 Excel file (Revenue.xlsx)
+- **Primary Key**: `row_id` (surrogate)
+- **SQLite Table**: `revenue`
+- **Columns**: year, quarter, month, subdivision, division_name, team_name, broker_name, revenue
+
+---
+
+## Two Virtual Environments Required
+
+| venv | Python | Purpose | Activate |
+|------|--------|---------|----------|
+| `.venv` | 3.14 | Main pipeline (`run_pipeline.py`) | `.venv\Scripts\activate` |
+| `.venv-dbt` | 3.12 | dbt models (`dbt run`) | `.venv-dbt\Scripts\activate` |
+
+**Important**: dbt does NOT support Python 3.14. Always use `.venv-dbt` for dbt commands!
+
 ---
 
 ## Command Cheat Sheet
 
 ```bash
-# Full pipeline refresh (dev)
+# Full pipeline refresh (dev) — use .venv
+.venv\Scripts\activate
 python run_pipeline.py --dataset tasks
 python run_pipeline.py --dataset dept_mapping
 python run_pipeline.py --dataset employees_master
+python run_pipeline.py --dataset workers
+python run_pipeline.py --dataset revenue
+
+# Then run dbt — switch to .venv-dbt
+.venv-dbt\Scripts\activate
 cd dbt_crc && dbt run && dbt test
 
 # Full pipeline refresh (prod)
+.venv\Scripts\activate
 set PIPELINE_ENV=prod
 python run_pipeline.py --env prod --dataset tasks
 python run_pipeline.py --env prod --dataset dept_mapping
 python run_pipeline.py --env prod --dataset employees_master
+
+.venv-dbt\Scripts\activate
 cd dbt_crc && dbt run --target prod
 
 # Partial runs
 python run_pipeline.py --dataset tasks --from-step 6   # Start from combine
+python run_pipeline.py --dataset tasks --force          # Reprocess all files (ignore fingerprints)
 dbt run --select stg_tasks+                            # Build stg_tasks and downstream
 
 # Validation

@@ -544,9 +544,17 @@ sequenceDiagram
 
 ## How to Run dbt
 
+**Important**: dbt requires Python 3.12, not the main venv's Python 3.14. Use the separate `.venv-dbt` environment.
+
 ```bash
+# Activate dbt venv first (NOT the main .venv)
+.venv-dbt\Scripts\activate
+
 # Navigate to dbt project
 cd "c:\Users\quang\CRC Code\ExcelIngestion\dbt_crc"
+
+# First time only: install dependencies
+dbt deps
 
 # Run all models (seeds -> staging -> marts)
 dbt run
@@ -561,6 +569,13 @@ dbt run --select +mart_tasks_enriched  # mart + all upstream deps
 dbt docs generate
 dbt docs serve    # Opens browser at localhost:8080
 ```
+
+### Two Virtual Environments
+
+| venv | Python | Purpose |
+|------|--------|---------|
+| `.venv` | 3.14 | Main pipeline (`run_pipeline.py`) |
+| `.venv-dbt` | 3.12 | dbt models (`dbt run`, `dbt test`) |
 
 ## Tools to Visualize dbt
 

@@ -14,6 +14,7 @@
 6. [Deploying to Production](#6-deploying-to-production)
 7. [Troubleshooting Pipeline Failures](#7-troubleshooting-pipeline-failures)
 8. [Adding a Dataset with Column Aliasing (Multi-Schema Sources)](#8-adding-a-dataset-with-column-aliasing-multi-schema-sources)
+9. [Setting Up dbt Environment](#9-setting-up-dbt-environment)
 
 ---
 
@@ -691,12 +692,17 @@ print('Sample employee_ids:', df['employee_id'].head(10).tolist())
 ### Key Commands
 
 ```bash
-# Python pipeline
+# Python pipeline (use .venv)
+.venv\Scripts\activate
 python run_pipeline.py --dataset {name}              # Run full pipeline
 python run_pipeline.py --dataset {name} --from-step 6  # Start from step 6
+python run_pipeline.py --dataset {name} --force        # Reprocess all files
 python run_pipeline.py --dry-run                      # Validate only
 
-# dbt
+# dbt (use .venv-dbt)
+.venv-dbt\Scripts\activate
+cd dbt_crc
+dbt deps                         # Install packages (first time)
 dbt run                          # Build all models
 dbt run --select model_name      # Build specific model
 dbt run --select model_name+     # Build model and downstream
@@ -707,3 +713,75 @@ dbt debug                        # Check connection
 pytest tests/ -v
 python tests/compare_dbt_vs_pipeline.py
 ```
+
+---
+
+## 9. Setting Up dbt Environment
+
+dbt requires Python 3.10-3.12 and does NOT work with Python 3.14. A separate virtual environment is required.
+
+### Step 9.1: Check Python Versions Available
+
+```bash
+py --list
+```
+
+You should see Python 3.12 listed. If not, install it from python.org.
+
+### Step 9.2: Create dbt Virtual Environment
+
+```bash
+py -3.12 -m venv .venv-dbt
+.venv-dbt\Scripts\activate
+pip install --upgrade pip
+pip install dbt-core dbt-duckdb
+```
+
+### Step 9.3: Verify Installation
+
+```bash
+.venv-dbt\Scripts\activate
+python --version          # Should show 3.12.x
+dbt --version             # Should show dbt-core and dbt-duckdb
+```
+
+### Step 9.4: Test dbt Connection
+
+```bash
+cd dbt_crc
+dbt debug
+```
+
+Should show:
+- `profiles.yml file [OK found and valid]`
+- `dbt_project.yml file [OK found and valid]`
+- `Connection test: [OK connection ok]`
+- `All checks passed!`
+
+### Step 9.5: Install dbt Packages
+
+```bash
+cd dbt_crc
+dbt deps
+```
+
+### Step 9.6: Run dbt Models
+
+```bash
+dbt run      # Build all models
+dbt test     # Run data tests
+```
+
+Expected output: `PASS=11` models, `PASS=64` tests, `ERROR=0`.
+
+### Two Venvs, Two Purposes
+
+| venv | Python | Purpose | Commands |
+|------|--------|---------|----------|
+| `.venv` | 3.14 | Main pipeline | `python run_pipeline.py` |
+| `.venv-dbt` | 3.12 | dbt models | `dbt run`, `dbt test` |
+
+**Important**:
+- Do NOT install dbt in `.venv` — it will fail
+- Always activate the correct venv before running commands
+- Add `.venv-dbt/` to `.gitignore`

@@ -60,7 +60,9 @@ Replace the path with your actual project folder. To see the exact string for th
 
 ## What You Need Before Starting
 
-1. **Python installed** (version 3.10 or newer)
+1. **Python installed** (two versions needed)
+   - **Python 3.14** (or 3.10+) for the main pipeline
+   - **Python 3.12** for dbt (dbt does not work with Python 3.14)
    - Download from: https://www.python.org/downloads/
    - During install, check "Add Python to PATH"
 
@@ -103,6 +105,25 @@ pip install -r requirements.txt
 ```
 
 Wait for it to finish (may take 1-2 minutes).
+
+### Step 6: Set Up dbt (Separate Python Environment)
+
+dbt requires Python 3.10-3.12. Since the main `.venv` uses Python 3.14, we need a separate virtual environment:
+
+```
+py -3.12 -m venv .venv-dbt
+.venv-dbt\Scripts\activate
+pip install dbt-core dbt-duckdb
+```
+
+Verify dbt works:
+```
+dbt --version
+cd dbt_crc
+dbt debug
+```
+
+You should see "All checks passed!"
 
 ---
 
@@ -161,25 +182,25 @@ python run_pipeline.py --env prod --dataset dept_mapping
 
 Wait for it to finish. You'll see the environment (e.g. "Environment: dev") and progress messages.
 
-### Step 3: Create the Power BI Database
+### Step 3: Run dbt to Build Analytics Models
 
-Default is **dev** (creates `powerbi\dev_warehouse.duckdb`):
-```
-python powerbi/create_duckdb.py
-```
+After the Python pipeline completes, run dbt to build the analytics marts:
 
-For production:
 ```
-set PIPELINE_ENV=prod
-python powerbi/create_duckdb.py
+.venv-dbt\Scripts\activate
+cd dbt_crc
+dbt run
+dbt test
 ```
 
-You should see:
-```
-Loaded tasks: 6,000,000 rows
-Loaded employees: 200 rows
-Loaded tasks_with_dept: 6,000,000 rows
-```
+You should see "Completed successfully" with all models passing.
+
+### Step 4: Verify in Power BI
+
+The DuckDB file at `powerbi\dev_warehouse.duckdb` now contains:
+- Base tables: `tasks`, `employees`, `employees_master`, `workers`, `revenue`
+- Staging views: `stg_tasks`, `stg_workers`, etc.
+- Mart tables: `mart_tasks_enriched`, `mart_team_capacity`, etc.
 
 ---
 
@@ -251,14 +272,25 @@ When you have new Excel files:
 
 | Task | Command |
 |------|---------|
-| Activate environment | `.venv\Scripts\activate` |
+| Activate pipeline venv | `.venv\Scripts\activate` |
+| Activate dbt venv | `.venv-dbt\Scripts\activate` |
 | Run task pipeline (dev) | `python run_pipeline.py` or `python run_pipeline.py --dataset tasks` |
 | Run task pipeline (prod) | `python run_pipeline.py --env prod --dataset tasks` |
 | Run employee pipeline | `python run_pipeline.py --dataset dept_mapping` |
 | Run employees_master | `python run_pipeline.py --dataset employees_master` |
-| Create Power BI database (dev) | `python powerbi/create_duckdb.py` |
-| Create Power BI database (prod) | `set PIPELINE_ENV=prod` then `python powerbi/create_duckdb.py` |
+| Run revenue pipeline | `python run_pipeline.py --dataset revenue` |
+| Run dbt models | `.venv-dbt\Scripts\activate` then `cd dbt_crc && dbt run` |
+| Test dbt models | `dbt test` |
 | Test ODBC / print connection string | `python powerbi/setup_odbc.py` |
+
+### Two Virtual Environments
+
+| venv | Python | Purpose |
+|------|--------|---------|
+| `.venv` | 3.14 | Main pipeline (`run_pipeline.py`) |
+| `.venv-dbt` | 3.12 | dbt models (`dbt run`) |
+
+**Important**: Always activate the correct venv before running commands!
 
 ---
 
