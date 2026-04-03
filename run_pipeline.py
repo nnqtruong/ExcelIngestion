@@ -1,4 +1,4 @@
-"""Orchestrator: run steps 01–10 in sequence. Uses {DATA_ROOT}/{env}/{dataset}/pipeline.yaml (--env dev|prod, --dataset NAME) or --pipeline PATH."""
+"""Orchestrator: run steps 01–09 in sequence. Uses {DATA_ROOT}/{env}/{dataset}/pipeline.yaml (--env dev|prod, --dataset NAME) or --pipeline PATH."""
 import argparse
 import logging
 import os
@@ -27,12 +27,7 @@ STEPS = [
     (7, "07_handle_nulls", SCRIPTS_DIR / "07_handle_nulls.py"),
     (8, "08_validate", SCRIPTS_DIR / "08_validate.py"),
     (9, "09_export_sqlite", SCRIPTS_DIR / "09_export_sqlite.py"),
-    (10, "10_sqlite_views", SCRIPTS_DIR / "10_sqlite_views.py"),
 ]
-
-# Steps 1-9 run per-dataset; step 10 (views) runs once after all datasets in --all mode
-STEPS_PER_DATASET = [(n, name, path) for n, name, path in STEPS if n <= 9]
-STEP_VIEWS = (10, "10_sqlite_views", SCRIPTS_DIR / "10_sqlite_views.py")
 
 
 def _print_missing_pipeline_help(missing_path: Path) -> None:
@@ -154,7 +149,7 @@ def run_step(
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Run pipeline steps 01–10 in sequence.")
+    parser = argparse.ArgumentParser(description="Run pipeline steps 01–09 in sequence.")
     parser.add_argument(
         "--data-root",
         type=Path,
@@ -191,7 +186,7 @@ def main() -> int:
         type=int,
         default=1,
         metavar="N",
-        help="Start from step N (1–10). Default: 1.",
+        help="Start from step N (1–9). Default: 1.",
     )
     parser.add_argument(
         "--verbose",
@@ -235,53 +230,18 @@ def main() -> int:
         return run_single_dataset(pipeline_path, args)
 
     # Multi-dataset mode (--all)
-    # Run steps 1-9 for each dataset, then step 10 once at the end
     print(f"Running all datasets: {', '.join(datasets_to_run)}")
     print(f"Environment: {args.env}")
-    print("Note: Steps 1-9 run per-dataset; step 10 (views) runs once at the end.")
     failed = []
     for dataset_name in datasets_to_run:
         pipeline_path = get_dataset_path(args.env, dataset_name) / "pipeline.yaml"
         print(f"\n{'='*60}")
-        print(f"Dataset: {dataset_name} (steps 1-9)")
+        print(f"Dataset: {dataset_name}")
         print(f"{'='*60}")
-        result = run_single_dataset(pipeline_path, args, skip_step_10=True)
+        result = run_single_dataset(pipeline_path, args)
         if result != 0:
             failed.append(dataset_name)
             print(f"WARNING: {dataset_name} failed, continuing with next dataset...")
-
-    # Run step 10 once after all datasets (use first dataset's root for logging)
-    if not failed or len(failed) < len(datasets_to_run):
-        print(f"\n{'='*60}")
-        if args.dry_run:
-            print("Step 10 (sqlite_views) would run once for all datasets")
-            print(f"{'='*60}")
-        else:
-            print("Running step 10 (sqlite_views) once for all datasets...")
-            print(f"{'='*60}")
-            # Use first successful dataset for logging context
-            first_dataset = next((d for d in datasets_to_run if d not in failed), datasets_to_run[0])
-            first_pipeline = get_dataset_path(args.env, first_dataset) / "pipeline.yaml"
-            fp = first_pipeline.resolve()
-            if not fp.is_file():
-                print(f"Warning: Could not run step 10 - pipeline not found: {fp}", file=sys.stderr)
-            else:
-                dataset_root = fp.parent
-                logs_dir = dataset_root / "logs"
-                log = setup_logging(logs_dir)
-                step_num, name, script_path = STEP_VIEWS
-                if not run_step(
-                    step_num,
-                    name,
-                    script_path,
-                    dataset_root,
-                    args.env,
-                    log,
-                    args.from_step,
-                    args.force,
-                ):
-                    log.error("Step 10 (sqlite_views) failed.")
-                    failed.append("step_10_views")
 
     if failed:
         print(f"\nCompleted with errors. Failed: {', '.join(failed)}")
@@ -290,15 +250,8 @@ def main() -> int:
     return 0
 
 
-def run_single_dataset(pipeline_path: Path, args: argparse.Namespace, skip_step_10: bool = False) -> int:
-    """Run pipeline for a single dataset. Returns exit code.
-
-    Args:
-        pipeline_path: Path to pipeline.yaml
-        args: Parsed command line arguments
-        skip_step_10: If True, skip step 10 (sqlite_views). Used by --all mode
-                      to run step 10 once after all datasets complete.
-    """
+def run_single_dataset(pipeline_path: Path, args: argparse.Namespace) -> int:
+    """Run pipeline for a single dataset. Returns exit code."""
     pipeline_path = pipeline_path.resolve()
     if not pipeline_path.is_file():
         _print_missing_pipeline_help(pipeline_path)
@@ -320,24 +273,24 @@ def run_single_dataset(pipeline_path: Path, args: argparse.Namespace, skip_step_
         log.info("Dry run: validating config and inputs (no writes).")
         if not dry_run_validate(dataset_root, log):
             return 1
-        max_step = 9 if skip_step_10 else 10
+        max_step = 9
         log.info("Dry run: would execute steps %d-%d: %s",
                  args.from_step,
                  max_step,
                  ", ".join(name for n, name, _ in STEPS if n >= args.from_step and n <= max_step))
         return 0
 
-    if not (1 <= args.from_step <= 10):
-        log.error("--from-step must be between 1 and 10, got %d", args.from_step)
+    if not (1 <= args.from_step <= 9):
+        log.error("--from-step must be between 1 and 9, got %d", args.from_step)
         return 1
 
     # Determine which steps to run
-    max_step = 9 if skip_step_10 else 10
+    max_step = 9
     steps_to_run = [(n, name, path) for n, name, path in STEPS if n >= args.from_step and n <= max_step]
     if not steps_to_run:
         return 0
 
-    log.info("Starting pipeline from step %d%s", args.from_step, " (skipping step 10)" if skip_step_10 else "")
+    log.info("Starting pipeline from step %d", args.from_step)
     for step_num, name, script_path in steps_to_run:
         if not run_step(
             step_num,

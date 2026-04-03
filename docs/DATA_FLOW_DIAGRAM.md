@@ -61,44 +61,16 @@ flowchart TB
     end
 
     subgraph STEP09["Step 09: Export SQLite"]
-        SQLITE_EXPORT["🗃️ export_sqlite()<br/>→ ExcelIngestion_Data/analytics/{env}_warehouse.db<br/>Create base indexes"]
+        SQLITE_EXPORT["🗃️ export_sqlite()<br/>→ ExcelIngestion_Data/analytics/{env}_warehouse.db<br/>Create base tables + indexes"]
     end
 
-    subgraph STEP10["Step 10: SQLite Views"]
-        direction TB
-        SEEDS["1️⃣ Load Seeds<br/>value_map_taskstatus<br/>value_map_flowname"]
-        STG_VIEWS["2️⃣ Create stg_tasks view<br/>Apply value maps<br/>Normalize columns"]
-        MAT_STAGING["3️⃣ CREATE TABLE<br/>_stg_tasks_enriched<br/>ONE expensive JOIN"]
-        INDEXES["4️⃣ Create Indexes<br/>task_date, drawer,<br/>taskstatus, flowname..."]
-        MART_VIEWS["5️⃣ Create 7 Mart Views<br/>Read from _stg_tasks_enriched"]
-        VERIFY["6️⃣ Verify Views<br/>COUNT(*) per view"]
-
-        SEEDS --> STG_VIEWS --> MAT_STAGING --> INDEXES --> MART_VIEWS --> VERIFY
-    end
-
-    subgraph SQLITE_DB["🗃️ SQLite Warehouse"]
+    subgraph SQLITE_DB["🗃️ SQLite Warehouse (Base Tables Only)"]
         direction TB
 
         subgraph BASE_TABLES["Base Tables"]
             T_TASKS["tasks<br/>4.7M rows"]
             T_WORKERS["workers<br/>~4K rows"]
             T_EMPLOYEES["employees_master<br/>~3K rows"]
-            T_SEEDS["value_map_*<br/>seed tables"]
-        end
-
-        subgraph STAGING["Staging Layer"]
-            V_STG_TASKS["stg_tasks<br/>(VIEW)"]
-            TBL_STG_ENRICHED["_stg_tasks_enriched<br/>(MATERIALIZED TABLE)<br/>Pre-joined + indexed"]
-        end
-
-        subgraph MARTS["Mart Views (7 total)"]
-            M1["mart_tasks_enriched<br/>SELECT * FROM _stg_tasks_enriched"]
-            M2["mart_team_capacity<br/>GROUP BY on workers"]
-            M3["mart_team_demand<br/>GROUP BY on _stg_tasks_enriched"]
-            M4["mart_onshore_offshore<br/>GROUP BY on _stg_tasks_enriched"]
-            M5["mart_backlog<br/>GROUP BY on _stg_tasks_enriched"]
-            M6["mart_turnaround<br/>GROUP BY on _stg_tasks_enriched"]
-            M7["mart_daily_trend<br/>GROUP BY on _stg_tasks_enriched"]
         end
     end
 
@@ -130,73 +102,9 @@ flowchart TB
     STEP07 --> STEP09
 
     STEP08 --> DUCKDB_DB
-    STEP09 --> STEP10
+    STEP09 --> SQLITE_DB
 
-    STEP10 --> SQLITE_DB
-
-    T_TASKS --> V_STG_TASKS
-    T_SEEDS --> V_STG_TASKS
-    V_STG_TASKS --> TBL_STG_ENRICHED
-    T_WORKERS --> TBL_STG_ENRICHED
-    T_EMPLOYEES --> TBL_STG_ENRICHED
-
-    TBL_STG_ENRICHED --> M1
-    TBL_STG_ENRICHED --> M3
-    TBL_STG_ENRICHED --> M4
-    TBL_STG_ENRICHED --> M5
-    TBL_STG_ENRICHED --> M6
-    TBL_STG_ENRICHED --> M7
-    T_WORKERS --> M2
-
-    SQLITE_DB --> POWERBI
     DUCKDB_DB --> POWERBI
-```
-
-## Step 10: SQLite Materialized Staging Architecture (Detail)
-
-```mermaid
-flowchart LR
-    subgraph BEFORE["❌ BEFORE (Slow - 10+ min)"]
-        direction TB
-        B_TASKS["stg_tasks<br/>4.7M rows"]
-        B_WORKERS["workers<br/>4K rows"]
-        B_EMPLOYEES["employees_master<br/>3K rows"]
-
-        B_M1["mart_tasks_enriched<br/>JOIN all 3 tables"]
-        B_M3["mart_team_demand<br/>JOIN tasks + workers"]
-        B_M4["mart_onshore_offshore<br/>JOIN tasks + employees"]
-
-        B_TASKS --> B_M1
-        B_WORKERS --> B_M1
-        B_EMPLOYEES --> B_M1
-
-        B_TASKS --> B_M3
-        B_WORKERS --> B_M3
-
-        B_TASKS --> B_M4
-        B_EMPLOYEES --> B_M4
-    end
-
-    subgraph AFTER["✅ AFTER (Fast - <30 sec)"]
-        direction TB
-        A_TASKS["stg_tasks"]
-        A_WORKERS["workers"]
-        A_EMPLOYEES["employees_master"]
-
-        A_STAGING["_stg_tasks_enriched<br/>(MATERIALIZED TABLE)<br/>ONE JOIN, indexed"]
-
-        A_M1["mart_tasks_enriched<br/>SELECT *"]
-        A_M3["mart_team_demand<br/>GROUP BY"]
-        A_M4["mart_onshore_offshore<br/>GROUP BY"]
-
-        A_TASKS --> A_STAGING
-        A_WORKERS --> A_STAGING
-        A_EMPLOYEES --> A_STAGING
-
-        A_STAGING --> A_M1
-        A_STAGING --> A_M3
-        A_STAGING --> A_M4
-    end
 ```
 
 ## Dataset Processing Flow
@@ -206,32 +114,31 @@ flowchart TB
     subgraph TASKS_FLOW["Tasks Dataset Flow"]
         T1["Raw Excel Files<br/>(multiple sources)"]
         T2["combined.parquet<br/>4.7M rows"]
-        T3["SQLite: tasks table"]
-        T4["stg_tasks view<br/>(value maps applied)"]
-        T5["_stg_tasks_enriched<br/>(joined with workers/employees)"]
-        T6["7 Mart Views"]
+        T3["SQLite: tasks table<br/>(base table)"]
+        T4["DuckDB: stg_tasks → marts<br/>(via dbt)"]
 
-        T1 -->|"Steps 01-05"| T2 -->|"Step 09"| T3 -->|"Step 10"| T4 --> T5 --> T6
+        T1 -->|"Steps 01-05"| T2 -->|"Step 09"| T3
+        T2 -->|"dbt run"| T4
     end
 
     subgraph WORKERS_FLOW["Workers Dataset Flow"]
         W1["Workers.xlsx"]
         W2["combined.parquet<br/>~4K rows"]
-        W3["SQLite: workers table"]
-        W4["Joined into<br/>_stg_tasks_enriched"]
-        W5["mart_team_capacity<br/>(direct query)"]
+        W3["SQLite: workers table<br/>(base table)"]
+        W4["DuckDB: stg_workers → marts<br/>(via dbt)"]
 
-        W1 -->|"Steps 01-05"| W2 -->|"Step 09"| W3 --> W4
-        W3 --> W5
+        W1 -->|"Steps 01-05"| W2 -->|"Step 09"| W3
+        W2 -->|"dbt run"| W4
     end
 
     subgraph EMPLOYEES_FLOW["Employees Master Flow"]
         E1["Employees_Master.xlsx"]
         E2["combined.parquet<br/>~3K rows"]
-        E3["SQLite: employees_master table"]
-        E4["Joined into<br/>_stg_tasks_enriched"]
+        E3["SQLite: employees_master table<br/>(base table)"]
+        E4["DuckDB: stg_employees → marts<br/>(via dbt)"]
 
-        E1 -->|"Steps 01-05"| E2 -->|"Step 09"| E3 --> E4
+        E1 -->|"Steps 01-05"| E2 -->|"Step 09"| E3
+        E2 -->|"dbt run"| E4
     end
 ```
 
@@ -277,164 +184,38 @@ flowchart TB
     end
 ```
 
-## _stg_tasks_enriched Table Schema
-
-```mermaid
-erDiagram
-    _stg_tasks_enriched {
-        string row_id PK
-        string taskid
-        string drawer
-        string policynumber
-        string filename
-        string filenumber
-        date effectivedate
-        string carrier
-        string acctexec
-        string taskdescription
-        string assignedto FK
-        string taskfrom
-        string operationby
-        string flowname
-        string stepname
-        string sentto
-        datetime dateavailable
-        datetime dateinitiated
-        datetime dateended
-        string taskstatus
-        datetime starttime
-        datetime endtime
-        string _source_file
-        datetime _ingested_at
-        string teammate "from workers"
-        string worker_job_profile "from workers"
-        string business_title "from workers"
-        string management_level "from workers"
-        string cost_center "from workers"
-        string cost_center_hierarchy "from workers"
-        float fte "from workers"
-        float scheduled_weekly_hours "from workers"
-        string direct_manager "from workers"
-        string worker_status "from workers"
-        string employee_source "from employees_master"
-        string employee_master_name "from employees_master"
-        float duration_minutes "computed"
-        float duration_hours "computed"
-        float lifecycle_hours "computed"
-        date task_date "computed"
-    }
-
-    workers {
-        string employee_id PK
-        string teammate
-        string job_profile
-        string business_title
-        string management_level
-        string cost_center
-        string cost_center_hierarchy
-        float fte
-        float scheduled_weekly_hours
-        string direct_manager
-        string current_status
-    }
-
-    employees_master {
-        string employee_id PK
-        string name
-        string source_system
-    }
-
-    stg_tasks {
-        string row_id PK
-        string assignedto
-        string taskstatus
-        string flowname
-    }
-
-    stg_tasks ||--o{ _stg_tasks_enriched : "base data"
-    workers ||--o{ _stg_tasks_enriched : "LEFT JOIN on assignedto"
-    employees_master ||--o{ _stg_tasks_enriched : "LEFT JOIN on assignedto"
-```
-
-## Mart Views Dependencies
-
-```mermaid
-flowchart TB
-    subgraph SOURCE_TABLES["Source Tables"]
-        WORKERS["workers"]
-        STG_ENRICHED["_stg_tasks_enriched<br/>(4.7M rows, indexed)"]
-    end
-
-    subgraph MART_VIEWS["7 Mart Views"]
-        M1["mart_tasks_enriched<br/>SELECT * (pass-through)"]
-        M2["mart_team_capacity<br/>Headcount by dept/cost center"]
-        M3["mart_team_demand<br/>Task volume by dept/week"]
-        M4["mart_onshore_offshore<br/>Tasks by source system"]
-        M5["mart_backlog<br/>Open tasks by drawer/flow"]
-        M6["mart_turnaround<br/>Completed task metrics"]
-        M7["mart_daily_trend<br/>Daily open/closed counts"]
-    end
-
-    STG_ENRICHED --> M1
-    WORKERS --> M2
-    STG_ENRICHED --> M3
-    STG_ENRICHED --> M4
-    STG_ENRICHED --> M5
-    STG_ENRICHED --> M6
-    STG_ENRICHED --> M7
-
-    subgraph INDEXES["Indexes on _stg_tasks_enriched"]
-        I1["idx_stg_task_date"]
-        I2["idx_stg_drawer"]
-        I3["idx_stg_taskstatus"]
-        I4["idx_stg_flowname"]
-        I5["idx_stg_cost_center"]
-        I6["idx_stg_source"]
-        I7["idx_stg_stepname"]
-    end
-
-    STG_ENRICHED --- INDEXES
-```
-
 ## Pipeline Execution Order
 
 ```mermaid
 sequenceDiagram
     participant User
     participant Pipeline as run_pipeline.py
-    participant Steps as Steps 01-10
+    participant Steps as Steps 01-09
     participant SQLite as SQLite DB
+    participant dbt as dbt
     participant DuckDB as DuckDB
 
-    User->>Pipeline: python run_pipeline.py --all
+    User->>Pipeline: python run_pipeline.py --dataset tasks
 
     loop For each dataset
-        Pipeline->>Steps: Step 01: Discover files
-        Pipeline->>Steps: Step 02: Validate schema
-        Pipeline->>Steps: Step 03: Deduplicate
-        Pipeline->>Steps: Step 04: Normalize
-        Pipeline->>Steps: Step 05: Combine → combined.parquet
+        Pipeline->>Steps: Step 01: Convert Excel → Parquet
+        Pipeline->>Steps: Step 02: Normalize schema
+        Pipeline->>Steps: Step 03-05: Clean, normalize values
+        Pipeline->>Steps: Step 06: Combine → combined.parquet
+        Pipeline->>Steps: Step 07-08: Handle nulls, validate
+        Pipeline->>Steps: Step 09: Export to SQLite
+        Steps->>SQLite: Write base tables + indexes
     end
-
-    Pipeline->>Steps: Step 06: Validate data
-    Pipeline->>Steps: Step 07: Build analytics
-
-    par Export to both databases
-        Pipeline->>Steps: Step 08: Export DuckDB
-        Steps->>DuckDB: Write tables
-        Pipeline->>Steps: Step 09: Export SQLite
-        Steps->>SQLite: Write tables + indexes
-    end
-
-    Pipeline->>Steps: Step 10: SQLite Views
-    Steps->>SQLite: Load seed tables
-    Steps->>SQLite: Create stg_tasks view
-    Steps->>SQLite: CREATE TABLE _stg_tasks_enriched (JOIN)
-    Steps->>SQLite: CREATE INDEXES
-    Steps->>SQLite: CREATE 7 mart views
-    Steps->>SQLite: Verify with COUNT(*)
 
     Pipeline->>User: Pipeline complete!
+
+    Note over User,DuckDB: Then run dbt separately
+
+    User->>dbt: dbt run
+    dbt->>DuckDB: Load seeds
+    dbt->>DuckDB: Create stg_* views
+    dbt->>DuckDB: Create mart_* tables
+    dbt->>User: dbt complete!
 ```
 
 ---
@@ -607,14 +388,12 @@ dbt docs serve    # Opens browser at localhost:8080
 2. **GitHub**: Renders automatically in .md files
 3. **Online**: Paste into [mermaid.live](https://mermaid.live)
 
-## Key Performance Insight
+## Architecture Summary
 
-The critical optimization is the **_stg_tasks_enriched** materialized table:
+| Layer | Location | Contents |
+|-------|----------|----------|
+| Pipeline (01-09) | Python | Excel → Parquet → SQLite (base tables) |
+| dbt | DuckDB | stg_* views + mart_* tables |
+| Power BI | DuckDB | Reads from dbt marts |
 
-| Metric | Before | After |
-|--------|--------|-------|
-| Step 10 Duration | 10+ minutes | <30 seconds |
-| JOIN Operations | 3+ (per view query) | 1 (at table creation) |
-| View Query Speed | Slow (re-computes JOIN) | Fast (indexed scan) |
-
-The expensive `tasks ⟕ workers ⟕ employees_master` JOIN runs **once** when creating `_stg_tasks_enriched`. All 7 mart views then read from this pre-joined, indexed table.
+SQLite contains only base tables. All staging views and marts are in DuckDB via dbt.

@@ -1,6 +1,6 @@
 # Excel Ingestion Pipeline
 
-A 10-step data pipeline that converts Excel files into clean, validated Parquet datasets and exports to SQLite/DuckDB for Power BI. Handles 500K+ row Excel files with low memory usage.
+A 9-step data pipeline that converts Excel files into clean, validated Parquet datasets and exports to SQLite for Power BI. dbt handles all analytics (staging views and marts) in DuckDB. Handles 500K+ row Excel files with low memory usage.
 
 ## First-Time Setup
 
@@ -222,8 +222,9 @@ ExcelIngestion/                          # git repo (code + config templates)
 └── powerbi/                           # DuckDB files for ODBC / dbt
 
 ExcelIngestion/ (continued)
+├── docs/                              # Documentation (workflow, diagrams, SOP)
 ├── lib/                               # Reusable pipeline functions
-├── scripts/                           # Step scripts 01–10 (thin wrappers around lib/)
+├── scripts/                           # Step scripts 01–09 (thin wrappers around lib/)
 ├── tests/
 ├── run_pipeline.py                    # Orchestrator
 └── requirements.txt
@@ -331,7 +332,8 @@ python run_pipeline.py --pipeline datasets/my_dataset/pipeline.yaml
 | 07 | handle_nulls | Apply fill strategies from schema |
 | 08 | validate | Check nulls, dtypes, row count; write JSON report |
 | 09 | export_sqlite | Write to SQLite (table from pipeline.yaml); create/replace table only |
-| 10 | sqlite_views | Sync dbt mart models as SQLite views for ad-hoc queries |
+
+**Note**: Pipeline stops at step 09. dbt handles all analytics (staging views and marts) in DuckDB.
 
 ## Configuration
 
@@ -411,7 +413,7 @@ When `pipeline.yaml` sets `sqlite.database: warehouse.db`, step 09 writes to **p
 - **dept_mapping** pipeline → table `employees`
 - **employees_master** pipeline → table `employees_master`
 
-Step 10 syncs **dbt mart models** as SQLite views for ad-hoc queries. See [dbt Marts](#dbt-marts-analytics-layer) below.
+SQLite contains only base tables. dbt handles all staging views and marts in DuckDB. See [dbt Marts](#dbt-marts-analytics-layer) below.
 
 Example queries:
 
@@ -428,16 +430,15 @@ SELECT drawer, completed_count, avg_handle_hours FROM mart_turnaround LIMIT 10;
 # Shared warehouse (after running all datasets)
 sqlite3 analytics/warehouse.db
 
-# Tables: tasks, employees, employees_master
-# Marts (synced from dbt): mart_tasks_enriched, mart_team_capacity, mart_team_demand,
-#   mart_onshore_offshore, mart_backlog, mart_turnaround, mart_daily_trend
+# Tables: tasks, employees, employees_master (base tables only)
+# Note: Marts are in DuckDB (via dbt), not SQLite
 ```
 
 Per-dataset DBs (when `sqlite.database` is not `warehouse.db`) live under `datasets/<name>/analytics/<database>`.
 
 ## dbt Marts (Analytics Layer)
 
-dbt is the single source of truth for analytics. Mart models are defined in `dbt_crc/models/marts/` and synced to both DuckDB (Power BI) and SQLite (ad-hoc queries).
+dbt is the single source of truth for analytics. Mart models are defined in `dbt_crc/models/marts/` and built in DuckDB. SQLite contains only base tables; all staging views and marts live in DuckDB.
 
 | Mart | Description |
 |------|-------------|
@@ -505,6 +506,20 @@ python powerbi/create_duckdb.py
 1. Download and install [DuckDB ODBC Driver](https://duckdb.org/docs/api/odbc/overview)
 2. Run `python powerbi/setup_odbc.py` (dev) or `set PIPELINE_ENV=prod` then `python powerbi/setup_odbc.py` to print the connection string for that environment
 3. In Power BI: Get Data > ODBC > paste the connection string (see [Dev/Prod Environments](#devprod-environments) for dev vs prod paths)
+
+## Documentation
+
+Detailed documentation is in the `docs/` folder:
+
+| Document | Description |
+|----------|-------------|
+| [current_state.md](docs/current_state.md) | Full LLM context: architecture, datasets, file paths |
+| [current_workflow.md](docs/current_workflow.md) | Data flow architecture and ASCII diagrams |
+| [DATA_FLOW_DIAGRAM.md](docs/DATA_FLOW_DIAGRAM.md) | Mermaid diagrams of pipeline and dbt flow |
+| [sop.md](docs/sop.md) | Standard Operating Procedures for all tasks |
+| [USER_GUIDE.md](docs/USER_GUIDE.md) | End-user guide for running pipelines |
+| [TEST_PLAN_INCREMENTAL.md](docs/TEST_PLAN_INCREMENTAL.md) | Testing procedures |
+| [SQLITE_OPTIMIZATION_MANIFESTO.md](docs/SQLITE_OPTIMIZATION_MANIFESTO.md) | Historical: SQLite optimization (superseded by dbt) |
 
 ## Troubleshooting
 

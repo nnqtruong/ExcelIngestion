@@ -240,6 +240,6 @@ class TestSQLiteExport:
             "SELECT 1 FROM sqlite_master WHERE type='view' AND name='mart_tasks_enriched'"
         )
         if cursor.fetchone() is None:
-            pytest.skip("mart_tasks_enriched missing — run pipeline step 10 first")
+            pytest.skip("mart_tasks_enriched missing — run dbt first")
         cursor.execute("SELECT COUNT(*) FROM mart_tasks_enriched")
         assert cursor.fetchone() is not None

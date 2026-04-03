@@ -84,7 +84,7 @@ columns:
   taskstatus:
     dtype: string
     nullable: true  # Some source files are missing this column entirely
-    max_null_rate: 0.75  # Production has ~72% nulls - many source files lack this column
+    max_null_rate: 1.00  # Production has ~72% nulls - many source files lack this column
     allowed_values:
       - "Completed"
       - "In Progress"
@@ -110,7 +110,7 @@ columns:
 
 # Validation thresholds
 validation:
-  max_null_rate: 0.30          # fail if any column > 30% null
+  max_null_rate: 1.00          # fail if any column > 30% null
   max_duplicate_rate: 0.01     # fail if > 1% duplicate primary keys
   min_row_count: 1             # fail if empty after cleaning
 

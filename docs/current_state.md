@@ -7,7 +7,7 @@
 
 ## Project Overview
 
-A 10-step data pipeline that converts Excel files into clean, validated Parquet datasets and exports to SQLite/DuckDB for Power BI consumption. Designed for CRC insurance industry data processing.
+A 9-step data pipeline that converts Excel files into clean, validated Parquet datasets and exports to SQLite for Power BI consumption. dbt handles all analytics (staging views and marts) in DuckDB. Designed for CRC insurance industry data processing.
 
 **Key Capabilities**:
 - Handles 500K+ row Excel files with low memory usage (chunked processing)
@@ -86,7 +86,6 @@ ExcelIngestion/
 │   ├── handle_nulls.py          # Null fill strategies
 │   ├── validate.py              # Validation checks, JSON report
 │   ├── export_sqlite.py         # SQLite export
-│   ├── sqlite_views.py          # Create analytics views
 │   └── logging_util.py          # Logging configuration
 │
 ├── scripts/                     # Step scripts (thin wrappers) + data layout helpers
@@ -99,7 +98,6 @@ ExcelIngestion/
 │   ├── 07_handle_nulls.py
 │   ├── 08_validate.py
 │   ├── 09_export_sqlite.py
-│   ├── 10_sqlite_views.py
 │   ├── init_data_directory.py
 │   └── migrate_data.py
 │
@@ -125,7 +123,7 @@ Under **`ExcelIngestion_Data/`** (default `DATA_ROOT`), each **`{env}/{dataset}/
 
 ---
 
-## Pipeline Steps (1-10)
+## Pipeline Steps (1-9)
 
 | Step | Script | Description |
 |------|--------|-------------|
@@ -138,9 +136,8 @@ Under **`ExcelIngestion_Data/`** (default `DATA_ROOT`), each **`{env}/{dataset}/
 | 07 | handle_nulls | Apply fill strategies from schema |
 | 08 | validate | Check nulls, dtypes, row count; write JSON report |
 | 09 | export_sqlite | Write to SQLite (shared warehouse.db) |
-| 10 | sqlite_views | Sync dbt mart models as SQLite views for ad-hoc queries |
 
-**Note**: dept_mapping uses a subset of steps (01, 02, 04, 05, 08, 09) defined in its pipeline.yaml.
+**Note**: Pipeline stops at step 09. dbt handles all analytics (staging views and marts) in DuckDB. Some datasets (like dept_mapping) use a subset of steps defined in their pipeline.yaml.
 
 ---
 
@@ -358,9 +355,9 @@ pytest tests/ -v
 
 ---
 
-## dbt Marts (Step 10 - Analytics Layer)
+## dbt Marts (Analytics Layer)
 
-dbt is the single source of truth for analytics. Mart SQL models are defined in `dbt_crc/models/marts/` and synced to both DuckDB (Power BI) and SQLite (ad-hoc queries) via `lib/sync_mart_views_sqlite.py`.
+dbt is the single source of truth for analytics. Mart SQL models are defined in `dbt_crc/models/marts/` and built in DuckDB. SQLite contains only base tables; all staging views and marts live in DuckDB.
 
 | Mart | Description |
 |------|-------------|
@@ -491,7 +488,7 @@ pyodbc
 |------|------|
 | Main orchestrator | `run_pipeline.py` |
 | Core logic | `lib/*.py` |
-| Step scripts | `scripts/01_*.py` … `scripts/10_*.py` |
+| Step scripts | `scripts/01_*.py` … `scripts/09_*.py` |
 | Init external layout | `scripts/init_data_directory.py` |
 | Migrate legacy data | `scripts/migrate_data.py` |
 | Schema / pipeline (runtime) | `{DATA_ROOT}/{env}/{dataset}/config/schema.yaml`, `pipeline.yaml` |

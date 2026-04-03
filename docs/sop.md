@@ -51,8 +51,9 @@ name: {new_dataset}
 environment: dev
 description: "Description of this dataset"
 
-# Optional: limit steps (default runs all 10)
+# Optional: limit steps (default runs all 9)
 # Omit this section to run all steps
+# Note: Pipeline stops at step 09. dbt handles all analytics in DuckDB.
 steps:
   - 01_convert
   - 02_normalize_schema

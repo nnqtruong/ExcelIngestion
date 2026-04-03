@@ -35,7 +35,9 @@ LAYER 1: INGESTION (Python Pipeline)
     │  │ Step 1 │ Step 2 │ Step 3 │ Step 4 │ Step 5 │ Step 6 │ │
     │  │Convert │Normalize│Add Cols│ Clean  │Norm Val│Combine │ │
     │  │xlsx→pq │ Schema │Missing │ Errors │  Maps  │ Union  │ │
-    │  └────────┴────────┴────────┴────────┴────────┴────────┘ │
+    │  ├────────┴────────┴────────┴────────┴────────┴────────┤ │
+    │  │ Step 7: Handle Nulls │ Step 8: Validate │ Step 9: SQLite │
+    │  └──────────────────────────────────────────────────────┘ │
     └──────────────────────────┬───────────────────────────────┘
                                │
                                ▼
@@ -51,29 +53,29 @@ LAYER 1: INGESTION (Python Pipeline)
 LAYER 2A: SQLITE (Python)     LAYER 2B: dbt-DuckDB (SQL)
 ═══════════════════════       ═══════════════════════════
 ┌─────────────────────┐       ┌────────────────────────────┐
-│ Steps 7-10          │       │ dbt_crc/models/staging/    │
-│ ┌───────┬─────────┐ │       │ ┌────────────┬───────────┐ │
-│ │Step 7 │ Step 8  │ │       │ │stg_tasks   │stg_employ │ │
-│ │Nulls  │Validate │ │       │ │  .sql      │  ees.sql  │ │
-│ ├───────┼─────────┤ │       │ └─────┬──────┴─────┬─────┘ │
-│ │Step 9 │ Step 10 │ │       │       │            │       │
-│ │SQLite │ Views   │ │       │       ▼            ▼       │
-│ └───────┴─────────┘ │       │ (Staging Layer - normalize,│
-└─────────┬───────────┘       │  join keys, value maps)    │
-          │                   └────────────┬───────────────┘
-          ▼                                │
-┌─────────────────────┐                    ▼
-│{DATA_ROOT}/analytics/*.db │       ┌────────────────────────────┐
-│ Tables:             │       │ dbt_crc/models/marts/      │
-│  - tasks            │       │ ┌──────────────────────────┐│
-│  - employees        │       │ │ mart_tasks_enriched.sql  ││
-│  - employees_master │       │ │ mart_team_capacity.sql   ││
-│ Marts (synced):     │       │ │ mart_team_demand.sql     ││
-│  - mart_tasks_      │       │ │ mart_onshore_offshore    ││
-│      enriched       │       │ │ mart_backlog.sql         ││
-│  - mart_team_demand │       │ │ mart_turnaround.sql      ││
-│  - etc.             │       │ │ mart_daily_trend.sql     ││
-└─────────────────────┘       │ └──────────────────────────┘│
+│ Step 9: Export      │       │ dbt_crc/models/staging/    │
+│ ┌─────────────────┐ │       │ ┌────────────┬───────────┐ │
+│ │ Write base      │ │       │ │stg_tasks   │stg_employ │ │
+│ │ tables to       │ │       │ │  .sql      │  ees.sql  │ │
+│ │ SQLite DB       │ │       │ └─────┬──────┴─────┬─────┘ │
+│ └─────────────────┘ │       │       │            │       │
+└─────────┬───────────┘       │       ▼            ▼       │
+          │                   │ (Staging Layer - normalize,│
+          ▼                   │  join keys, value maps)    │
+┌─────────────────────┐       └────────────┬───────────────┘
+│{DATA_ROOT}/analytics/*.db │              │
+│ Base Tables Only:   │                    ▼
+│  - tasks            │       ┌────────────────────────────┐
+│  - employees        │       │ dbt_crc/models/marts/      │
+│  - employees_master │       │ ┌──────────────────────────┐│
+│  - workers          │       │ │ mart_tasks_enriched.sql  ││
+│  - revenue          │       │ │ mart_team_capacity.sql   ││
+└─────────────────────┘       │ │ mart_team_demand.sql     ││
+                              │ │ mart_onshore_offshore    ││
+                              │ │ mart_backlog.sql         ││
+                              │ │ mart_turnaround.sql      ││
+                              │ │ mart_daily_trend.sql     ││
+                              │ └──────────────────────────┘│
                               │ (GOLD LAYER - Business     │
                               │  metrics, aggregations)    │
                               └────────────┬───────────────┘
@@ -112,7 +114,7 @@ LAYER 2A: SQLITE (Python)     LAYER 2B: dbt-DuckDB (SQL)
 | **Raw** | Excel files | Manual drop | `{DATA_ROOT}/{env}/{dataset}/raw/*.xlsx` |
 | **Clean** | raw/*.xlsx | Python steps 1-5 | `{DATA_ROOT}/{env}/{dataset}/clean/*.parquet` |
 | **Combined** | clean/*.parquet | Python step 6 | `{DATA_ROOT}/{env}/{dataset}/analytics/combined.parquet` |
-| **SQLite** | combined.parquet | Python steps 9-10 | `{DATA_ROOT}/analytics/{env_}warehouse.db` |
+| **SQLite** | combined.parquet | Python step 9 | `{DATA_ROOT}/analytics/{env_}warehouse.db` (base tables only) |
 | **Staging** | combined.parquet | dbt staging models | DuckDB views (stg_*) |
 | **Marts** | stg_* views | dbt mart models | DuckDB views (mart_*) |
 | **Power BI** | DuckDB | ODBC connection | Reports |
@@ -134,7 +136,7 @@ LAYER 2A: SQLITE (Python)     LAYER 2B: dbt-DuckDB (SQL)
 
 ## Pipeline Steps Detail
 
-### Python Pipeline (Steps 1-10)
+### Python Pipeline (Steps 1-9)
 
 | Step | Script | Input | Output | Description |
 |------|--------|-------|--------|-------------|
@@ -146,8 +148,9 @@ LAYER 2A: SQLITE (Python)     LAYER 2B: dbt-DuckDB (SQL)
 | 06 | combine_datasets | `clean/*.parquet` | `analytics/combined.parquet` | Union all files, add row_id |
 | 07 | handle_nulls | `analytics/combined.parquet` | `analytics/combined.parquet` | Apply fill strategies |
 | 08 | validate | `analytics/combined.parquet` | `logs/validation_report.json` | Check nulls, dtypes, row count |
-| 09 | export_sqlite | `analytics/combined.parquet` | `analytics/warehouse.db` | Write to SQLite |
-| 10 | sqlite_views | `analytics/warehouse.db` | `analytics/warehouse.db` | Create analytics views |
+| 09 | export_sqlite | `analytics/combined.parquet` | `analytics/warehouse.db` | Write base tables to SQLite |
+
+> **Note**: Pipeline stops at step 09. All staging views (stg_*) and mart tables are built by dbt in DuckDB.
 
 ### dbt Models
 

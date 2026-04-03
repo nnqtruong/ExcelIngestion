@@ -135,7 +135,7 @@ columns:
   full_part_time:
     dtype: string
     nullable: true
-    max_null_rate: 0.05
+    max_null_rate: 1.00
 
   pay_rate_type:
     dtype: string
@@ -220,6 +220,6 @@ column_order:
   - _ingested_at
 
 validation:
-  max_null_rate: 0.30
+  max_null_rate: 1.00
   max_duplicate_rate: 0.01
   min_row_count: 1

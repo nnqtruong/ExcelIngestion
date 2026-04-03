@@ -20,7 +20,9 @@
       "Bash(del analyticsdev_warehouse.db)",
       "Bash(del powerbidev_warehouse.duckdb)",
       "Bash(del datasetsdevtasksrawsample_tasks.xlsx)",
-      "Bash(rm:*)"
+      "Bash(rm:*)",
+      "Bash(dir /b \"c:\\Users\\quang\\CRC Code\\ExcelIngestion\\*.md\")",
+      "Bash(test:*)"
     ],
     "deny": [],
     "ask": []
