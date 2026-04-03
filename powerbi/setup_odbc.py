@@ -2,13 +2,19 @@
 Power BI ODBC setup: print warehouse path and test DuckDB ODBC connection.
 
 Reads PIPELINE_ENV (default: dev). Dev uses dev_warehouse.duckdb; prod uses warehouse.duckdb.
+DuckDB files live under {DATA_ROOT}/powerbi/ (same as dbt and the pipeline).
 Use the printed absolute path in your Windows ODBC DSN (Database parameter)
 so Power BI connects to the file warehouse, not an in-memory database.
 """
 import os
+import sys
 from pathlib import Path
 
-POWERBI_DIR = Path(__file__).resolve().parent
+ROOT = Path(__file__).resolve().parent.parent
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from lib.data_root import get_powerbi_path
 
 
 def get_env() -> str:
@@ -19,7 +25,7 @@ def get_env() -> str:
 def get_db_path(env: str) -> Path:
     """Return path to DuckDB file for the given environment."""
     name = "dev_warehouse.duckdb" if env == "dev" else "warehouse.duckdb"
-    return (POWERBI_DIR / name).resolve()
+    return (get_powerbi_path() / name).resolve()
 
 
 env = get_env()

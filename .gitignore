@@ -11,9 +11,9 @@ clean/
 analytics/
 report/
 
-# Power BI / DuckDB
-powerbi/warehouse.duckdb
-powerbi/warehouse.duckdb.wal
+# Power BI / DuckDB (all .duckdb files belong in DATA_ROOT, not repo)
+powerbi/*.duckdb
+powerbi/*.duckdb.wal
 
 # Raw data files (Excel inputs)
 **/raw/*.xlsx
@@ -45,9 +45,3 @@ nul
 con
 prn
 aux
-
-
-# Raw data files (Excel inputs)
-**/raw/*.xlsx
-**/raw/*.xls
-

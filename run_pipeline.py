@@ -1,4 +1,4 @@
-"""Orchestrator: run steps 01–10 in sequence. Uses datasets/{env}/{dataset}/pipeline.yaml (--env dev|prod, --dataset NAME) or --pipeline PATH."""
+"""Orchestrator: run steps 01–10 in sequence. Uses {DATA_ROOT}/{env}/{dataset}/pipeline.yaml (--env dev|prod, --dataset NAME) or --pipeline PATH."""
 import argparse
 import logging
 import os
@@ -7,6 +7,9 @@ import sys
 from pathlib import Path
 
 import yaml
+
+from lib.config import get_combined_path
+from lib.data_root import get_data_root, get_dataset_path
 
 ROOT = Path(__file__).resolve().parent
 SCRIPTS_DIR = ROOT / "scripts"
@@ -32,12 +35,13 @@ STEPS_PER_DATASET = [(n, name, path) for n, name, path in STEPS if n <= 9]
 STEP_VIEWS = (10, "10_sqlite_views", SCRIPTS_DIR / "10_sqlite_views.py")
 
 
-def get_dataset_root(pipeline_path: Path) -> Path:
-    """Resolve pipeline YAML path; return its parent as dataset root. Raise if file missing."""
-    resolved = pipeline_path.resolve()
-    if not resolved.exists():
-        raise FileNotFoundError(f"Pipeline config not found: {resolved}")
-    return resolved.parent
+def _print_missing_pipeline_help(missing_path: Path) -> None:
+    print(f"Pipeline config not found: {missing_path}", file=sys.stderr)
+    print("", file=sys.stderr)
+    print("Create the external data layout and copy config templates:", file=sys.stderr)
+    print("  python scripts/init_data_directory.py", file=sys.stderr)
+    print("If your data is still under the repo datasets/ folder:", file=sys.stderr)
+    print("  python scripts/migrate_data.py --dry-run", file=sys.stderr)
 
 
 def setup_logging(logs_dir: Path) -> logging.Logger:
@@ -57,23 +61,15 @@ def setup_logging(logs_dir: Path) -> logging.Logger:
     return logger
 
 
-def get_analytics_output_path(dataset_root: Path) -> Path | None:
-    """Path to combined output in dataset analytics/ (from combine.yaml)."""
-    config_dir = dataset_root / "config"
-    analytics_dir = dataset_root / "analytics"
-    combine_path = config_dir / "combine.yaml"
-    if not combine_path.exists():
-        return analytics_dir / "combined.parquet"
-    with open(combine_path, encoding="utf-8") as f:
-        config = yaml.safe_load(f)
-    output_name = (config or {}).get("output", "combined.parquet")
-    return analytics_dir / output_name
+def get_analytics_output_path(dataset_root: Path) -> Path:
+    """Path to combined Parquet under dataset analytics/ (from dataset config/combine.yaml)."""
+    return get_combined_path(dataset_root / "analytics", dataset_root / "config" / "combine.yaml")
 
 
 def remove_analytics_output(dataset_root: Path, log: logging.Logger) -> None:
-    """Remove combined output from dataset analytics/ so no partial output remains on failure."""
+    """Remove combined Parquet from external analytics/ so no partial output remains on failure."""
     path = get_analytics_output_path(dataset_root)
-    if path and path.exists():
+    if path.exists():
         try:
             path.unlink()
             log.warning("Removed partial output: %s", path)
@@ -131,6 +127,7 @@ def run_step(
     env = os.environ.copy()
     env["PIPELINE_DATASET_ROOT"] = str(dataset_root)
     env["PIPELINE_ENV"] = pipeline_env
+    env["DATA_ROOT"] = str(get_data_root())
     env["PIPELINE_FROM_STEP"] = str(pipeline_from_step)
     if pipeline_force:
         env["PIPELINE_FORCE"] = "1"
@@ -159,11 +156,18 @@ def run_step(
 def main() -> int:
     parser = argparse.ArgumentParser(description="Run pipeline steps 01–10 in sequence.")
     parser.add_argument(
+        "--data-root",
+        type=Path,
+        default=None,
+        metavar="PATH",
+        help="External data root (sets DATA_ROOT). Default: DATA_ROOT env or sibling ExcelIngestion_Data.",
+    )
+    parser.add_argument(
         "--env",
         choices=("dev", "prod"),
         default="dev",
         metavar="ENV",
-        help="Environment for dataset path (default: dev). Uses datasets/ENV/NAME/pipeline.yaml with --dataset.",
+        help="Environment segment under DATA_ROOT (default: dev). Uses DATA_ROOT/ENV/NAME/pipeline.yaml with --dataset.",
     )
     parser.add_argument(
         "--pipeline",
@@ -175,7 +179,7 @@ def main() -> int:
         "--dataset",
         default=None,
         metavar="NAME",
-        help="Dataset name (e.g. tasks, dept_mapping). Uses datasets/--env/NAME/pipeline.yaml.",
+        help="Dataset name (e.g. tasks, dept_mapping). Uses DATA_ROOT/--env/NAME/pipeline.yaml.",
     )
     parser.add_argument(
         "--dry-run",
@@ -206,6 +210,9 @@ def main() -> int:
     )
     args = parser.parse_args()
 
+    if args.data_root is not None:
+        os.environ["DATA_ROOT"] = str(Path(args.data_root).expanduser().resolve())
+
     # Handle --all flag: run all datasets in sequence
     if args.all:
         if args.pipeline or args.dataset:
@@ -218,11 +225,13 @@ def main() -> int:
     # Single dataset mode
     if datasets_to_run is None:
         if args.pipeline:
-            pipeline_path = ROOT / args.pipeline
+            pipeline_path = Path(args.pipeline)
+            if not pipeline_path.is_absolute():
+                pipeline_path = ROOT / pipeline_path
         elif args.dataset:
-            pipeline_path = ROOT / "datasets" / args.env / args.dataset / "pipeline.yaml"
+            pipeline_path = get_dataset_path(args.env, args.dataset) / "pipeline.yaml"
         else:
-            pipeline_path = ROOT / "datasets" / args.env / DEFAULT_DATASET / "pipeline.yaml"
+            pipeline_path = get_dataset_path(args.env, DEFAULT_DATASET) / "pipeline.yaml"
         return run_single_dataset(pipeline_path, args)
 
     # Multi-dataset mode (--all)
@@ -232,7 +241,7 @@ def main() -> int:
     print("Note: Steps 1-9 run per-dataset; step 10 (views) runs once at the end.")
     failed = []
     for dataset_name in datasets_to_run:
-        pipeline_path = ROOT / "datasets" / args.env / dataset_name / "pipeline.yaml"
+        pipeline_path = get_dataset_path(args.env, dataset_name) / "pipeline.yaml"
         print(f"\n{'='*60}")
         print(f"Dataset: {dataset_name} (steps 1-9)")
         print(f"{'='*60}")
@@ -252,9 +261,12 @@ def main() -> int:
             print(f"{'='*60}")
             # Use first successful dataset for logging context
             first_dataset = next((d for d in datasets_to_run if d not in failed), datasets_to_run[0])
-            first_pipeline = ROOT / "datasets" / args.env / first_dataset / "pipeline.yaml"
-            try:
-                dataset_root = get_dataset_root(first_pipeline)
+            first_pipeline = get_dataset_path(args.env, first_dataset) / "pipeline.yaml"
+            fp = first_pipeline.resolve()
+            if not fp.is_file():
+                print(f"Warning: Could not run step 10 - pipeline not found: {fp}", file=sys.stderr)
+            else:
+                dataset_root = fp.parent
                 logs_dir = dataset_root / "logs"
                 log = setup_logging(logs_dir)
                 step_num, name, script_path = STEP_VIEWS
@@ -270,8 +282,6 @@ def main() -> int:
                 ):
                     log.error("Step 10 (sqlite_views) failed.")
                     failed.append("step_10_views")
-            except FileNotFoundError:
-                print("Warning: Could not run step 10 - no dataset root found")
 
     if failed:
         print(f"\nCompleted with errors. Failed: {', '.join(failed)}")
@@ -289,11 +299,12 @@ def run_single_dataset(pipeline_path: Path, args: argparse.Namespace, skip_step_
         skip_step_10: If True, skip step 10 (sqlite_views). Used by --all mode
                       to run step 10 once after all datasets complete.
     """
-    try:
-        dataset_root = get_dataset_root(pipeline_path)
-    except FileNotFoundError as e:
-        print(e, file=sys.stderr)
+    pipeline_path = pipeline_path.resolve()
+    if not pipeline_path.is_file():
+        _print_missing_pipeline_help(pipeline_path)
         return 1
+
+    dataset_root = pipeline_path.parent
 
     logs_dir = dataset_root / "logs"
     log = setup_logging(logs_dir)
@@ -301,7 +312,9 @@ def run_single_dataset(pipeline_path: Path, args: argparse.Namespace, skip_step_
         log.setLevel(logging.DEBUG)
         logging.getLogger().setLevel(logging.DEBUG)
 
+    log.info("Data root: %s", get_data_root())
     log.info("Environment: %s", args.env)
+    log.info("Dataset root: %s", dataset_root)
 
     if args.dry_run:
         log.info("Dry run: validating config and inputs (no writes).")
@@ -324,7 +337,6 @@ def run_single_dataset(pipeline_path: Path, args: argparse.Namespace, skip_step_
     if not steps_to_run:
         return 0
 
-    log.info("Dataset root: %s", dataset_root)
     log.info("Starting pipeline from step %d%s", args.from_step, " (skipping step 10)" if skip_step_10 else "")
     for step_num, name, script_path in steps_to_run:
         if not run_step(

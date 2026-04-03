@@ -1,23 +1,24 @@
 # Raw Parquet sources (dbt-duckdb external_location).
-# Paths use PIPELINE_ENV (default: dev) to resolve datasets/{env}/.../combined.parquet.
+# Paths: {DATA_ROOT}/{env}/{dataset}/analytics/combined.parquet (same layout as the Python pipeline).
+# Default DATA_ROOT matches profiles.yml: sibling ExcelIngestion_Data when you run dbt from dbt_crc/.
 version: 2
 sources:
   - name: raw
     description: "Pipeline output Parquet files by environment (dev/prod)."
     tables:
       - name: tasks
-        description: "Task data from datasets/{env}/tasks/analytics/combined.parquet"
+        description: "Task data from {DATA_ROOT}/{env}/tasks/analytics/combined.parquet"
         meta:
-          external_location: "../datasets/{{ env_var('PIPELINE_ENV', 'dev') }}/tasks/analytics/combined.parquet"
+          external_location: "{{ env_var('DATA_ROOT', '../../ExcelIngestion_Data') }}/{{ env_var('PIPELINE_ENV', 'dev') }}/tasks/analytics/combined.parquet"
       - name: employees
-        description: "Employee/department mapping from datasets/{env}/dept_mapping/analytics/combined.parquet"
+        description: "Employee/department mapping from {DATA_ROOT}/{env}/dept_mapping/analytics/combined.parquet"
         meta:
-          external_location: "../datasets/{{ env_var('PIPELINE_ENV', 'dev') }}/dept_mapping/analytics/combined.parquet"
+          external_location: "{{ env_var('DATA_ROOT', '../../ExcelIngestion_Data') }}/{{ env_var('PIPELINE_ENV', 'dev') }}/dept_mapping/analytics/combined.parquet"
       - name: workers
-        description: "Workday HR worker export from datasets/{env}/workers/analytics/combined.parquet"
+        description: "Workday HR worker export from {DATA_ROOT}/{env}/workers/analytics/combined.parquet"
         meta:
-          external_location: "../datasets/{{ env_var('PIPELINE_ENV', 'dev') }}/workers/analytics/combined.parquet"
+          external_location: "{{ env_var('DATA_ROOT', '../../ExcelIngestion_Data') }}/{{ env_var('PIPELINE_ENV', 'dev') }}/workers/analytics/combined.parquet"
       - name: employees_master
-        description: "Unified HR + Genpact employee dimension from datasets/{env}/employees_master/analytics/combined.parquet"
+        description: "Unified HR + Genpact employee dimension from {DATA_ROOT}/{env}/employees_master/analytics/combined.parquet"
         meta:
-          external_location: "../datasets/{{ env_var('PIPELINE_ENV', 'dev') }}/employees_master/analytics/combined.parquet"
+          external_location: "{{ env_var('DATA_ROOT', '../../ExcelIngestion_Data') }}/{{ env_var('PIPELINE_ENV', 'dev') }}/employees_master/analytics/combined.parquet"

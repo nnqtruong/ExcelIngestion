@@ -19,39 +19,36 @@ This tool converts your Excel files into a format Power BI can read quickly.
 
 If you do not set `PIPELINE_ENV`, it defaults to **dev**.
 
-### 2. The --env flag for run_pipeline.py
+### 2. External data folder (`DATA_ROOT`)
 
-When you run the pipeline with a dataset name, it uses **datasets/{env}/{dataset}/**:
+By default, all Excel files, Parquet, SQLite, and DuckDB live in **`ExcelIngestion_Data`** next to your project folder (not inside the git repo).
 
-- **Dev (default):**  
-  `python run_pipeline.py --dataset tasks` → uses `datasets/dev/tasks/`
-- **Prod:**  
-  `python run_pipeline.py --env prod --dataset tasks` → uses `datasets/prod/tasks/`
+**First time:** run `python scripts/init_data_directory.py` from the project root.  
+**Custom location:** set `DATA_ROOT` (PowerShell: `$env:DATA_ROOT="C:\path\to\data"`) before init or pipeline runs.
 
-`--env` can be `dev` or `prod` (default is `dev`). The pipeline prints the current environment at start.
+### 3. The --env flag for run_pipeline.py
 
-### 3. Folder structure (dev vs prod)
-
-| Environment | Where your data lives | SQLite DB | Power BI DuckDB file |
-|-------------|------------------------|-----------|------------------------|
-| **dev**     | `datasets\dev\tasks\raw\`, `datasets\dev\dept_mapping\raw\` | `analytics\dev_warehouse.db` | `powerbi\dev_warehouse.duckdb` |
-| **prod**    | `datasets\prod\tasks\raw\`, `datasets\prod\dept_mapping\raw\` | `analytics\warehouse.db` | `powerbi\warehouse.duckdb` |
-
-Put Excel files in the folder for the environment you are using (e.g. dev: `datasets\dev\tasks\raw\`).
-
-### 4. Power BI connection strings for each environment
-
-Use the connection string that matches the environment:
+With `--dataset`, paths are **`{DATA_ROOT}/{env}/{dataset}/`** (default `DATA_ROOT` = `..\ExcelIngestion_Data`):
 
 - **Dev (default):**  
-  `Driver={DuckDB Driver};Database=C:\Users\quang\CRC Code\ExcelIngestion\powerbi\dev_warehouse.duckdb;access_mode=READ_ONLY`
+  `python run_pipeline.py --dataset tasks` → `ExcelIngestion_Data\dev\tasks\`
 - **Prod:**  
-  `Driver={DuckDB Driver};Database=C:\Users\quang\CRC Code\ExcelIngestion\powerbi\warehouse.duckdb;access_mode=READ_ONLY`
+  `python run_pipeline.py --env prod --dataset tasks` → `ExcelIngestion_Data\prod\tasks\`
 
-Replace the path with your actual project folder. To see the exact string for the current environment, run:  
-`python powerbi/setup_odbc.py` (for dev) or `set PIPELINE_ENV=prod` then `python powerbi/setup_odbc.py` (for prod).
+`--env` can be `dev` or `prod` (default is `dev`). The pipeline prints the data root and dataset path at start.
 
-### 5. Default is always dev
+### 4. Folder structure (dev vs prod)
+
+| Environment | Where your Excel files go | SQLite DB | Power BI DuckDB file |
+|-------------|---------------------------|-----------|------------------------|
+| **dev**     | `{DATA_ROOT}\dev\tasks\raw\`, `{DATA_ROOT}\dev\dept_mapping\raw\`, … | `{DATA_ROOT}\analytics\dev_warehouse.db` | `{DATA_ROOT}\powerbi\dev_warehouse.duckdb` |
+| **prod**    | `{DATA_ROOT}\prod\...` | `{DATA_ROOT}\analytics\warehouse.db` | `{DATA_ROOT}\powerbi\warehouse.duckdb` |
+
+### 5. Power BI connection strings for each environment
+
+DuckDB files are under **`{DATA_ROOT}\powerbi\`**. Run `python powerbi/setup_odbc.py` to print the full path and connection string for the current `PIPELINE_ENV` (dev or prod).
+
+### 6. Default is always dev
 
 - If you do not set `PIPELINE_ENV` or `--env`, the pipeline and Power BI scripts use **dev**.
 - This avoids accidentally writing or reading production data when you meant to use development.
@@ -106,7 +103,17 @@ pip install -r requirements.txt
 
 Wait for it to finish (may take 1-2 minutes).
 
-### Step 6: Set Up dbt (Separate Python Environment)
+### Step 6: Create the external data folder
+
+From the same project folder (with `.venv` activated):
+
+```
+python scripts/init_data_directory.py
+```
+
+This creates `C:\Users\quang\CRC Code\ExcelIngestion_Data` (next to `ExcelIngestion`) and copies YAML configs from the repo. Put your Excel files under `ExcelIngestion_Data\dev\...\raw\`, not under `datasets\` in the repo, unless you are using the migration script.
+
+### Step 7: Set Up dbt (Separate Python Environment)
 
 dbt requires Python 3.10-3.12. Since the main `.venv` uses Python 3.14, we need a separate virtual environment:
 
@@ -116,10 +123,12 @@ py -3.12 -m venv .venv-dbt
 pip install dbt-core dbt-duckdb
 ```
 
-Verify dbt works:
+Verify dbt works (set `DATA_ROOT` to your external folder if it is not the default):
+
 ```
 dbt --version
 cd dbt_crc
+set DATA_ROOT=C:\Users\quang\CRC Code\ExcelIngestion_Data
 dbt debug
 ```
 
@@ -129,21 +138,25 @@ You should see "All checks passed!"
 
 ## Adding Your Excel Files
 
-Default environment is **dev**. Use these folders:
+**Run the init script first** (once per machine or after a fresh clone): `python scripts/init_data_directory.py`. That creates `ExcelIngestion_Data` next to the project and seeds config YAML. Without it, `run_pipeline.py` will not find `pipeline.yaml` under the external tree.
+
+Default environment is **dev**. Put files under **`ExcelIngestion_Data`** (or your custom **`DATA_ROOT`**), not under `datasets\` in the repo:
 
 1. Open File Explorer
-2. Go to: `C:\Users\quang\CRC Code\ExcelIngestion\datasets\dev\tasks\raw`
+2. Go to: `C:\Users\quang\CRC Code\ExcelIngestion_Data\dev\tasks\raw`
 3. Copy your Excel files (`.xlsx`) into this folder
 
 For employee/department data:
-- Go to: `C:\Users\quang\CRC Code\ExcelIngestion\datasets\dev\dept_mapping\raw`
-- Copy your employee mapping Excel file here
+
+- `ExcelIngestion_Data\dev\dept_mapping\raw`
 
 For unified employee dimension (HR + Genpact):
-- Go to: `C:\Users\quang\CRC Code\ExcelIngestion\datasets\dev\employees_master\raw`
-- Copy Brokerage.xlsx, Select.xlsx, and Genpact.xlsx here
 
-For production, use `datasets\prod\tasks\raw`, `datasets\prod\dept_mapping\raw`, and `datasets\prod\employees_master\raw` and run the pipeline with `--env prod`.
+- `ExcelIngestion_Data\dev\employees_master\raw`
+
+For production, use `ExcelIngestion_Data\prod\...` and run the pipeline with `--env prod`.
+
+**If you still have files under the old in-repo `datasets\` tree:** run `python scripts/migrate_data.py --dry-run` then `python scripts/migrate_data.py` to move them into `ExcelIngestion_Data`.
 
 ---
 
@@ -184,20 +197,22 @@ Wait for it to finish. You'll see the environment (e.g. "Environment: dev") and 
 
 ### Step 3: Run dbt to Build Analytics Models
 
-After the Python pipeline completes, run dbt to build the analytics marts:
+After the Python pipeline completes, run dbt to build the analytics marts. Use the same **`DATA_ROOT`** as the pipeline (default: `ExcelIngestion_Data` next to the project):
 
 ```
 .venv-dbt\Scripts\activate
+set DATA_ROOT=C:\Users\quang\CRC Code\ExcelIngestion_Data
 cd dbt_crc
+dbt seed
 dbt run
 dbt test
 ```
 
-You should see "Completed successfully" with all models passing.
+On a new DuckDB file, **`dbt seed`** is required before **`dbt run`**. You should see "Completed successfully" when models pass (use `dbt run --select ...` if you have not ingested every dataset yet).
 
 ### Step 4: Verify in Power BI
 
-The DuckDB file at `powerbi\dev_warehouse.duckdb` now contains:
+The DuckDB file at `ExcelIngestion_Data\powerbi\dev_warehouse.duckdb` (default `DATA_ROOT`) contains:
 - Base tables: `tasks`, `employees`, `employees_master`, `workers`, `revenue`
 - Staging views: `stg_tasks`, `stg_workers`, etc.
 - Mart tables: `mart_tasks_enriched`, `mart_team_capacity`, etc.
@@ -221,12 +236,12 @@ The DuckDB file at `powerbi\dev_warehouse.duckdb` now contains:
 2. In the **Connection string** box, paste the string for your environment (default is **dev**):
 
    **Dev:**  
-   `Driver={DuckDB Driver};Database=C:\Users\quang\CRC Code\ExcelIngestion\powerbi\dev_warehouse.duckdb;access_mode=READ_ONLY`
+   `Driver={DuckDB Driver};Database=C:\Users\quang\CRC Code\ExcelIngestion_Data\powerbi\dev_warehouse.duckdb;access_mode=READ_ONLY`
 
    **Prod:**  
-   `Driver={DuckDB Driver};Database=C:\Users\quang\CRC Code\ExcelIngestion\powerbi\warehouse.duckdb;access_mode=READ_ONLY`
+   `Driver={DuckDB Driver};Database=C:\Users\quang\CRC Code\ExcelIngestion_Data\powerbi\warehouse.duckdb;access_mode=READ_ONLY`
 
-   Replace the path with your project folder. Run `python powerbi/setup_odbc.py` to print the exact string.
+   Replace with your `DATA_ROOT` if needed. Run `python powerbi/setup_odbc.py` to print the exact path and string.
 
 3. Click **OK**
 
@@ -254,7 +269,7 @@ Select the tables you need, click **Load**.
 
 When you have new Excel files:
 
-1. Delete old files from the `raw` folder for your environment (e.g. `datasets\dev\tasks\raw`) or add new ones alongside.
+1. Delete old files from the `raw` folder for your environment (e.g. `ExcelIngestion_Data\dev\tasks\raw`) or add new ones alongside.
 2. Run the pipeline again (default is dev):
    ```
    cd "C:\Users\quang\CRC Code\ExcelIngestion"
@@ -279,7 +294,8 @@ When you have new Excel files:
 | Run employee pipeline | `python run_pipeline.py --dataset dept_mapping` |
 | Run employees_master | `python run_pipeline.py --dataset employees_master` |
 | Run revenue pipeline | `python run_pipeline.py --dataset revenue` |
-| Run dbt models | `.venv-dbt\Scripts\activate` then `cd dbt_crc && dbt run` |
+| Initialize external data folder | `python scripts/init_data_directory.py` |
+| Run dbt models | `.venv-dbt\Scripts\activate` then `set DATA_ROOT=...` and `cd dbt_crc && dbt seed && dbt run` |
 | Test dbt models | `dbt test` |
 | Test ODBC / print connection string | `python powerbi/setup_odbc.py` |
 
@@ -314,7 +330,8 @@ When you have new Excel files:
 - Restart your computer after installing
 
 ### Pipeline fails with error
-- Check your Excel files are in the correct `raw` folder
+- Check your Excel files are under `ExcelIngestion_Data\{env}\{dataset}\raw\` (or your `DATA_ROOT`)
+- Run `python scripts/init_data_directory.py` if you see `Pipeline config not found`
 - Make sure Excel files are not open in another program
 - Try running with `--dry-run` first: `python run_pipeline.py --dry-run`
 
@@ -322,15 +339,17 @@ When you have new Excel files:
 
 ## File Locations
 
-Default environment is **dev**.
+Default environment is **dev**. Paths assume default **`DATA_ROOT`** = `ExcelIngestion_Data` next to the project.
 
 | What | Dev | Prod |
 |------|-----|------|
-| Excel files (tasks) | `datasets\dev\tasks\raw\` | `datasets\prod\tasks\raw\` |
-| Excel files (employees) | `datasets\dev\dept_mapping\raw\` | `datasets\prod\dept_mapping\raw\` |
-| Excel files (employees_master) | `datasets\dev\employees_master\raw\` | `datasets\prod\employees_master\raw\` |
-| Power BI DuckDB | `powerbi\dev_warehouse.duckdb` | `powerbi\warehouse.duckdb` |
-| Pipeline logs | `datasets\dev\tasks\logs\pipeline.log` | `datasets\prod\tasks\logs\pipeline.log` |
+| Excel files (tasks) | `ExcelIngestion_Data\dev\tasks\raw\` | `ExcelIngestion_Data\prod\tasks\raw\` |
+| Excel files (employees) | `ExcelIngestion_Data\dev\dept_mapping\raw\` | `ExcelIngestion_Data\prod\dept_mapping\raw\` |
+| Excel files (employees_master) | `ExcelIngestion_Data\dev\employees_master\raw\` | `ExcelIngestion_Data\prod\employees_master\raw\` |
+| Combined Parquet | `ExcelIngestion_Data\dev\{dataset}\analytics\combined.parquet` | `ExcelIngestion_Data\prod\{dataset}\analytics\combined.parquet` |
+| SQLite warehouse | `ExcelIngestion_Data\analytics\dev_warehouse.db` | `ExcelIngestion_Data\analytics\warehouse.db` |
+| Power BI DuckDB | `ExcelIngestion_Data\powerbi\dev_warehouse.duckdb` | `ExcelIngestion_Data\powerbi\warehouse.duckdb` |
+| Pipeline logs | `ExcelIngestion_Data\dev\tasks\logs\pipeline.log` | `ExcelIngestion_Data\prod\tasks\logs\pipeline.log` |
 
 ---
 
@@ -338,5 +357,5 @@ Default environment is **dev**.
 
 If you run into issues:
 1. Check the Troubleshooting section above
-2. Look at the log file: `datasets\tasks\logs\pipeline.log`
+2. Look at the log file: `ExcelIngestion_Data\dev\tasks\logs\pipeline.log` (adjust env/dataset as needed)
 3. Contact your system administrator

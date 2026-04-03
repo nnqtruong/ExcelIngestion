@@ -1,8 +1,8 @@
 # Incremental ingestion — manual test plan
 
-Prerequisites: Python env activated, `datasets/dev/tasks/` (or your `--env` / `--dataset`) with `raw/`, `config/`, etc. Use a **copy** of production data or fixtures if you need a safe sandbox.
+Prerequisites: Python env activated, **`DATA_ROOT`** initialized (`python scripts/init_data_directory.py`), and `{DATA_ROOT}/dev/tasks/` (or your `--env` / `--dataset`) with `raw/`, `config/`, etc. Default `DATA_ROOT` is `../ExcelIngestion_Data`. Use a **copy** of production data or fixtures if you need a safe sandbox.
 
-Paths below assume `datasets/dev/tasks/`; adjust `--env` / `--dataset` as needed.
+Paths below use **`ExcelIngestion_Data/dev/tasks/`** as the default external layout; replace with your `DATA_ROOT` or use `--pipeline datasets/dev/tasks/pipeline.yaml` only if you intentionally run in-repo.
 
 ---
 
@@ -17,14 +17,14 @@ python run_pipeline.py --dataset tasks
 **Expect**
 
 - Step 01 converts every Excel under `raw/` (e.g. 12 files if that is your layout).
-- After the run, state exists: `datasets/dev/tasks/_state/ingestion_state.json` (directory may be gitignored; it should still exist on disk).
+- After the run, state exists: `ExcelIngestion_Data/dev/tasks/_state/ingestion_state.json` (under your `DATA_ROOT`; may be gitignored if you symlink the repo).
 - `ingestion_state.json` contains `"files"` with one entry per raw workbook name, each with `md5`, `size_bytes`, and timestamps.
 
 **Verify**
 
 ```bash
-dir datasets\dev\tasks\_state
-type datasets\dev\tasks\_state\ingestion_state.json
+dir ..\ExcelIngestion_Data\dev\tasks\_state
+type ..\ExcelIngestion_Data\dev\tasks\_state\ingestion_state.json
 ```
 
 ---
@@ -40,7 +40,7 @@ python run_pipeline.py --dataset tasks
 **Expect**
 
 - Step 01 logs **no** per-file “Converting …” lines for unchanged inputs.
-- Log line in `datasets/dev/tasks/logs/pipeline.log` (and console) for step 01:
+- Log line in `ExcelIngestion_Data/dev/tasks/logs/pipeline.log` (and console) for step 01:
 
   `No new or changed files. Skipping convert. (N unchanged)`  
 
@@ -136,7 +136,7 @@ python run_pipeline.py --dataset tasks --force
 |--------|----------------|
 | Skip convert | `logs/pipeline.log` — `No new or changed files. Skipping convert.` |
 | Force | `python run_pipeline.py --dataset tasks --force` |
-| State | `datasets/{env}/{dataset}/_state/ingestion_state.json` |
+| State | `{DATA_ROOT}/{env}/{dataset}/_state/ingestion_state.json` |
 | Orphan clean | `Removed orphan clean Parquet (no matching raw):` in step 01 logs |
 | Skip combine | `Step 01 skipped (no raw changes); combined.parquet exists. Skipping combine.` in step 06 (when sentinel + conditions apply) |
 

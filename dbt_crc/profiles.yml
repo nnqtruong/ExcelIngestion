@@ -1,11 +1,16 @@
+# DuckDB databases live under {DATA_ROOT}/powerbi/.
+# - Set DATA_ROOT to your external data folder (same as the Excel ingestion pipeline), e.g.
+#     set DATA_ROOT=C:\path\to\ExcelIngestion_Data
+# - If DATA_ROOT is unset, the default is ../../ExcelIngestion_Data (sibling of the ExcelIngestion
+#   repo folder). Run dbt from this directory (cd dbt_crc) so that relative path resolves correctly.
 crc_analytics:
   target: dev
   outputs:
     dev:
       type: duckdb
-      path: ../powerbi/dev_warehouse.duckdb
+      path: "{{ env_var('DATA_ROOT', '../../ExcelIngestion_Data') }}/powerbi/dev_warehouse.duckdb"
       threads: 4
     prod:
       type: duckdb
-      path: ../powerbi/warehouse.duckdb
+      path: "{{ env_var('DATA_ROOT', '../../ExcelIngestion_Data') }}/powerbi/warehouse.duckdb"
       threads: 4

@@ -2,6 +2,16 @@
 
 > **Purpose**: Visual and technical documentation of how data flows through the system.
 
+**`DATA_ROOT`:** Set the environment variable `DATA_ROOT` to your external data folder (default: **`ExcelIngestion_Data`** next to the **`ExcelIngestion`** repo). All paths below use `{DATA_ROOT}`; they are **not** under the git working tree unless you use `--pipeline datasets/...`.
+
+```
+Code vs data (default layout)
+─────────────────────────────────────────────────────────
+  ExcelIngestion\          ← Repository (clone / zip updates)
+  ExcelIngestion_Data\     ← DATA_ROOT (persistent user data)
+─────────────────────────────────────────────────────────
+```
+
 ---
 
 ## Data Flow Diagram
@@ -14,7 +24,7 @@
 LAYER 1: INGESTION (Python Pipeline)
 ══════════════════════════════════════
     ┌──────────────┐
-    │  Excel Files │  datasets/{env}/{dataset}/raw/*.xlsx
+    │  Excel Files │  {DATA_ROOT}/{env}/{dataset}/raw/*.xlsx
     │  (Source)    │
     └──────┬───────┘
            │
@@ -30,7 +40,7 @@ LAYER 1: INGESTION (Python Pipeline)
                                │
                                ▼
     ┌──────────────────────────────────────────────────────────┐
-    │  datasets/{env}/{dataset}/analytics/combined.parquet     │
+    │  {DATA_ROOT}/{env}/{dataset}/analytics/combined.parquet   │
     │  (BRONZE/SILVER LAYER - Clean, typed, combined data)     │
     └──────────────────────────┬───────────────────────────────┘
                                │
@@ -53,7 +63,7 @@ LAYER 2A: SQLITE (Python)     LAYER 2B: dbt-DuckDB (SQL)
           │                   └────────────┬───────────────┘
           ▼                                │
 ┌─────────────────────┐                    ▼
-│analytics/warehouse.db│       ┌────────────────────────────┐
+│{DATA_ROOT}/analytics/*.db │       ┌────────────────────────────┐
 │ Tables:             │       │ dbt_crc/models/marts/      │
 │  - tasks            │       │ ┌──────────────────────────┐│
 │  - employees        │       │ │ mart_tasks_enriched.sql  ││
@@ -70,8 +80,8 @@ LAYER 2A: SQLITE (Python)     LAYER 2B: dbt-DuckDB (SQL)
                                            │
                                            ▼
                               ┌────────────────────────────┐
-                              │ powerbi/{env}_warehouse    │
-                              │         .duckdb            │
+                              │ {DATA_ROOT}/powerbi/       │
+                              │   {env}_warehouse.duckdb   │
                               │ Tables:                    │
                               │  - tasks, employees,       │
                               │    employees_master        │
@@ -99,10 +109,10 @@ LAYER 2A: SQLITE (Python)     LAYER 2B: dbt-DuckDB (SQL)
 
 | Stage | Input | Process | Output |
 |-------|-------|---------|--------|
-| **Raw** | Excel files | Manual drop | `datasets/{env}/{dataset}/raw/*.xlsx` |
-| **Clean** | raw/*.xlsx | Python steps 1-5 | `datasets/{env}/{dataset}/clean/*.parquet` |
-| **Combined** | clean/*.parquet | Python step 6 | `datasets/{env}/{dataset}/analytics/combined.parquet` |
-| **SQLite** | combined.parquet | Python steps 9-10 | `analytics/{env_}warehouse.db` |
+| **Raw** | Excel files | Manual drop | `{DATA_ROOT}/{env}/{dataset}/raw/*.xlsx` |
+| **Clean** | raw/*.xlsx | Python steps 1-5 | `{DATA_ROOT}/{env}/{dataset}/clean/*.parquet` |
+| **Combined** | clean/*.parquet | Python step 6 | `{DATA_ROOT}/{env}/{dataset}/analytics/combined.parquet` |
+| **SQLite** | combined.parquet | Python steps 9-10 | `{DATA_ROOT}/analytics/{env_}warehouse.db` |
 | **Staging** | combined.parquet | dbt staging models | DuckDB views (stg_*) |
 | **Marts** | stg_* views | dbt mart models | DuckDB views (mart_*) |
 | **Power BI** | DuckDB | ODBC connection | Reports |
@@ -113,9 +123,9 @@ LAYER 2A: SQLITE (Python)     LAYER 2B: dbt-DuckDB (SQL)
 
 | Layer | Owned By | Purpose | Location |
 |-------|----------|---------|----------|
-| **Raw** | User | Drop Excel files | `datasets/{env}/{dataset}/raw/` |
-| **Bronze** | Python | Convert, normalize schema | `datasets/{env}/{dataset}/clean/` |
-| **Silver** | Python | Combine, validate | `datasets/{env}/{dataset}/analytics/combined.parquet` |
+| **Raw** | User | Drop Excel files | `{DATA_ROOT}/{env}/{dataset}/raw/` |
+| **Bronze** | Python | Convert, normalize schema | `{DATA_ROOT}/{env}/{dataset}/clean/` |
+| **Silver** | Python | Combine, validate | `{DATA_ROOT}/{env}/{dataset}/analytics/combined.parquet` |
 | **Staging** | dbt | Normalize values, prepare joins | `dbt_crc/models/staging/stg_*.sql` |
 | **Gold/Marts** | dbt | Business metrics, aggregations | `dbt_crc/models/marts/mart_*.sql` |
 | **Presentation** | Power BI | Dashboards, reports | ODBC → DuckDB |
@@ -172,9 +182,9 @@ LAYER 2A: SQLITE (Python)     LAYER 2B: dbt-DuckDB (SQL)
 
 | Component | Dev | Prod |
 |-----------|-----|------|
-| Dataset path | `datasets/dev/{dataset}/` | `datasets/prod/{dataset}/` |
-| SQLite DB | `analytics/dev_warehouse.db` | `analytics/warehouse.db` |
-| DuckDB | `powerbi/dev_warehouse.duckdb` | `powerbi/warehouse.duckdb` |
+| Dataset path | `{DATA_ROOT}/dev/{dataset}/` | `{DATA_ROOT}/prod/{dataset}/` |
+| SQLite DB | `{DATA_ROOT}/analytics/dev_warehouse.db` | `{DATA_ROOT}/analytics/warehouse.db` |
+| DuckDB | `{DATA_ROOT}/powerbi/dev_warehouse.duckdb` | `{DATA_ROOT}/powerbi/warehouse.duckdb` |
 
 ---
 
@@ -232,6 +242,13 @@ LAYER 2A: SQLITE (Python)     LAYER 2B: dbt-DuckDB (SQL)
 ## Command Cheat Sheet
 
 ```bash
+# First-time or new machine: create external data folder (default ../ExcelIngestion_Data)
+python scripts/init_data_directory.py
+
+# Optional: custom data location (CMD)
+set DATA_ROOT=D:\MyData\ExcelIngestion
+python scripts/init_data_directory.py
+
 # Full pipeline refresh (dev) — use .venv
 .venv\Scripts\activate
 python run_pipeline.py --dataset tasks

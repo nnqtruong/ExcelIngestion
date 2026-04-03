@@ -1,19 +1,24 @@
 """Compare dbt mart_tasks_enriched (DuckDB) with pipeline Parquet output.
 Run from repo root: python tests/compare_dbt_vs_pipeline.py
 
-Views in dev_warehouse reference Parquet via paths relative to dbt_crc (../datasets/...).
-We chdir to dbt_crc for mart queries so those paths resolve to repo datasets/.
+Uses DATA_ROOT (default: sibling ExcelIngestion_Data) for DuckDB and tasks combined Parquet.
 """
 import os
+import sys
 from pathlib import Path
 
 import duckdb
 
 # Repo root (parent of tests/)
 ROOT = Path(__file__).resolve().parent.parent
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from lib.data_root import get_data_root, get_powerbi_path
+
 DBT_CRC = ROOT / "dbt_crc"
-DUCKDB_PATH = ROOT / "powerbi" / "dev_warehouse.duckdb"
-PARQUET_PATH = ROOT / "datasets" / "dev" / "tasks" / "analytics" / "combined.parquet"
+DUCKDB_PATH = get_powerbi_path() / "dev_warehouse.duckdb"
+PARQUET_PATH = get_data_root() / "dev" / "tasks" / "analytics" / "combined.parquet"
 
 # Columns to compare null rates (must exist in both; mart has normalized taskstatus/flowname)
 KEY_COLUMNS = ["row_id", "taskid", "taskstatus", "flowname", "drawer", "starttime", "endtime"]

@@ -2,6 +2,8 @@
 
 > **Purpose**: Step-by-step procedures for common tasks in the ExcelIngestion pipeline.
 
+**Runtime data root:** Day-to-day operations use **`DATA_ROOT`** (default `../ExcelIngestion_Data`). Treat paths below as **`{DATA_ROOT}/{env}/{dataset}/...`** after you run `python scripts/init_data_directory.py` and copy or migrate configs. The in-repo **`datasets/`** tree remains the **template** used by `init_data_directory.py` and for optional `--pipeline datasets/...` runs.
+
 ---
 
 ## Table of Contents
@@ -15,6 +17,7 @@
 7. [Troubleshooting Pipeline Failures](#7-troubleshooting-pipeline-failures)
 8. [Adding a Dataset with Column Aliasing (Multi-Schema Sources)](#8-adding-a-dataset-with-column-aliasing-multi-schema-sources)
 9. [Setting Up dbt Environment](#9-setting-up-dbt-environment)
+10. [Setting Up External Data Directory](#10-setting-up-external-data-directory)
 
 ---
 
@@ -187,7 +190,7 @@ sources:
       - name: {new_dataset}
         description: "Description of the dataset"
         meta:
-          external_location: "../datasets/{{ env_var('PIPELINE_ENV', 'dev') }}/{new_dataset}/analytics/combined.parquet"
+          external_location: "{{ env_var('DATA_ROOT', '../../ExcelIngestion_Data') }}/{{ env_var('PIPELINE_ENV', 'dev') }}/{new_dataset}/analytics/combined.parquet"
 ```
 
 ### Step 2.2: Create Staging Model
@@ -785,3 +788,65 @@ Expected output: `PASS=11` models, `PASS=64` tests, `ERROR=0`.
 - Do NOT install dbt in `.venv` — it will fail
 - Always activate the correct venv before running commands
 - Add `.venv-dbt/` to `.gitignore`
+
+---
+
+## 10. Setting Up External Data Directory
+
+### When to Use
+
+- First-time setup on a new machine
+- After downloading a new zip release of the code (your data stays outside the repo)
+- Pointing the pipeline at a custom disk location (shared drive, larger disk, etc.)
+
+### Step 10.1: Initialize Data Directory
+
+From the project root (with `.venv` activated if you use one):
+
+```bash
+python scripts/init_data_directory.py
+```
+
+This creates the default **`../ExcelIngestion_Data`** folder (sibling to `ExcelIngestion/`), copies YAML templates from `datasets/` in the repo, and creates `dev/` and `prod/` dataset trees plus `analytics/` and `powerbi/`.
+
+### Step 10.2: (Optional) Custom Location
+
+**Command Prompt:**
+
+```bat
+set DATA_ROOT=D:\CustomPath
+python scripts/init_data_directory.py
+```
+
+**PowerShell:**
+
+```powershell
+$env:DATA_ROOT="D:\CustomPath"
+python scripts/init_data_directory.py
+```
+
+Use the same `DATA_ROOT` when running `run_pipeline.py`, `powerbi/*.py`, and `dbt` (see `dbt_crc/profiles.yml`).
+
+### Step 10.3: Migrate Existing Data
+
+If you still have files under the in-repo **`datasets/`** folder (or legacy root **`analytics/`** / **`powerbi/`**):
+
+```bash
+python scripts/migrate_data.py --dry-run
+python scripts/migrate_data.py
+```
+
+Review the dry-run output, then run without `--dry-run` to move files into `{DATA_ROOT}`.
+
+### Folder Structure
+
+| Folder | Contents |
+|--------|----------|
+| `{DATA_ROOT}/dev/{dataset}/raw/` | Input Excel files |
+| `{DATA_ROOT}/dev/{dataset}/clean/` | Intermediate Parquet |
+| `{DATA_ROOT}/dev/{dataset}/analytics/` | `combined.parquet` |
+| `{DATA_ROOT}/dev/{dataset}/_state/` | Fingerprint state (`ingestion_state.json`) |
+| `{DATA_ROOT}/analytics/` | SQLite databases (`dev_warehouse.db` / `warehouse.db`) |
+| `{DATA_ROOT}/powerbi/` | DuckDB files for Power BI and dbt |
+
+`prod/` mirrors `dev/` when using `--env prod`.

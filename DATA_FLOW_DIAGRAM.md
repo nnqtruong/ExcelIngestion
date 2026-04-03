@@ -1,9 +1,17 @@
 # ExcelIngestion Pipeline - Data Flow Visualization
 
+**Layout:** **`ExcelIngestion/`** holds code (git). **`ExcelIngestion_Data/`** is the default **`DATA_ROOT`**: Excel, Parquet, SQLite, and DuckDB live here so they are not overwritten by repo updates. Set **`DATA_ROOT`** to override the folder name or location.
+
 ## Complete Pipeline Architecture
 
 ```mermaid
 flowchart TB
+    subgraph ON_DISK["On disk"]
+        direction TB
+        REPO["📂 ExcelIngestion/<br/>Repository (code)"]
+        EDATA["📂 ExcelIngestion_Data/<br/>DATA_ROOT (persistent data)"]
+    end
+
     subgraph INPUT["📁 RAW INPUT LAYER"]
         direction LR
         TASKS_XLSX["📊 Tasks Excel Files<br/>Multiple .xlsx files<br/>~4.7M rows total"]
@@ -13,7 +21,7 @@ flowchart TB
     end
 
     subgraph STEP01["Step 01: Discover Files"]
-        DISCOVER["🔍 discover_files()<br/>Scan datasets/{env}/**/raw/"]
+        DISCOVER["🔍 discover_files()<br/>Scan ExcelIngestion_Data/{env}/**/raw/"]
     end
 
     subgraph STEP02["Step 02: Validate Schema"]
@@ -32,12 +40,12 @@ flowchart TB
         COMBINE["📦 combine_files()<br/>Union all source files<br/>→ combined.parquet"]
     end
 
-    subgraph PARQUET_LAYER["📁 PARQUET STAGING LAYER"]
+    subgraph PARQUET_LAYER["📁 PARQUET STAGING LAYER (under DATA_ROOT)"]
         direction LR
-        TASKS_PQ["tasks/<br/>combined.parquet<br/>4.7M rows"]
-        WORKERS_PQ["workers/<br/>combined.parquet<br/>~4K rows"]
-        EMPLOYEES_PQ["employees_master/<br/>combined.parquet<br/>~3K rows"]
-        DEPT_PQ["dept_mapping/<br/>combined.parquet<br/>~200 rows"]
+        TASKS_PQ["ExcelIngestion_Data/.../tasks/<br/>analytics/combined.parquet"]
+        WORKERS_PQ["ExcelIngestion_Data/.../workers/<br/>analytics/combined.parquet"]
+        EMPLOYEES_PQ["ExcelIngestion_Data/.../employees_master/<br/>analytics/combined.parquet"]
+        DEPT_PQ["ExcelIngestion_Data/.../dept_mapping/<br/>analytics/combined.parquet"]
     end
 
     subgraph STEP06["Step 06: Validate Data"]
@@ -49,11 +57,11 @@ flowchart TB
     end
 
     subgraph STEP08["Step 08: Export DuckDB"]
-        DUCKDB_EXPORT["🦆 export_duckdb()<br/>→ dev_warehouse.duckdb"]
+        DUCKDB_EXPORT["🦆 export_duckdb()<br/>→ ExcelIngestion_Data/powerbi/*.duckdb"]
     end
 
     subgraph STEP09["Step 09: Export SQLite"]
-        SQLITE_EXPORT["🗃️ export_sqlite()<br/>→ analytics/{env}_warehouse.db<br/>Create base indexes"]
+        SQLITE_EXPORT["🗃️ export_sqlite()<br/>→ ExcelIngestion_Data/analytics/{env}_warehouse.db<br/>Create base indexes"]
     end
 
     subgraph STEP10["Step 10: SQLite Views"]
@@ -231,37 +239,40 @@ flowchart TB
 
 ```mermaid
 flowchart TB
-    subgraph ROOT["ExcelIngestion/"]
+    subgraph REPO["ExcelIngestion/ (repository)"]
         direction TB
 
-        subgraph DATASETS["datasets/"]
+        subgraph DATASETS["datasets/ (templates for init)"]
             DEV["dev/"]
             PROD["prod/"]
-
-            subgraph DEV_CONTENT["dev/ structure"]
-                D_TASKS["tasks/<br/>├── raw/*.xlsx<br/>├── staging/*.parquet<br/>└── analytics/combined.parquet"]
-                D_WORKERS["workers/<br/>├── raw/*.xlsx<br/>└── analytics/combined.parquet"]
-                D_EMPLOYEES["employees_master/<br/>├── raw/*.xlsx<br/>└── analytics/combined.parquet"]
-            end
-        end
-
-        subgraph ANALYTICS["analytics/"]
-            A_SQLITE["dev_warehouse.db<br/>prod_warehouse.db"]
-        end
-
-        subgraph POWERBI["powerbi/"]
-            P_DUCKDB["dev_warehouse.duckdb<br/>prod_warehouse.duckdb"]
         end
 
         subgraph LIB["lib/"]
-            L1["discover.py<br/>validate_schema.py<br/>deduplicate.py<br/>normalize.py<br/>combine.py"]
-            L2["validate_data.py<br/>build_analytics.py<br/>export_duckdb.py<br/>export_sqlite.py<br/>sqlite_views.py"]
+            L1["Pipeline libraries"]
         end
 
         subgraph DBT["dbt_crc/"]
-            DBT_SEEDS["seeds/<br/>value_map_*.csv"]
-            DBT_STAGING["models/staging/<br/>stg_*.sql"]
-            DBT_MARTS["models/marts/<br/>mart_*.sql"]
+            DBT_SEEDS["seeds/"]
+            DBT_STAGING["models/staging/"]
+            DBT_MARTS["models/marts/"]
+        end
+    end
+
+    subgraph EROOT["ExcelIngestion_Data/ (DATA_ROOT — persistent)"]
+        direction TB
+
+        subgraph EDEV["dev/ …"]
+            D_TASKS["tasks/raw/*.xlsx<br/>tasks/analytics/combined.parquet"]
+            D_WORKERS["workers/…"]
+            D_EMPLOYEES["employees_master/…"]
+        end
+
+        subgraph EANALYTICS["analytics/"]
+            A_SQLITE["dev_warehouse.db<br/>warehouse.db"]
+        end
+
+        subgraph EPOWERBI["powerbi/"]
+            P_DUCKDB["dev_warehouse.duckdb<br/>warehouse.duckdb"]
         end
     end
 ```

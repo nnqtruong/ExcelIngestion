@@ -4,7 +4,7 @@ from pathlib import Path
 
 import yaml
 
-from lib.paths import ROOT
+from lib.data_root import get_analytics_path
 
 
 def load_pipeline_config(dataset_root: Path) -> dict:
@@ -33,14 +33,15 @@ def get_sqlite_table_name(dataset_root: Path) -> str:
 
 
 def get_sqlite_db_path(dataset_root: Path) -> Path:
-    """Path to SQLite DB. Uses PIPELINE_ENV (default: dev). Dev: analytics/dev_warehouse.db, prod: analytics/warehouse.db. Shared warehouse at ROOT/analytics/; else dataset_root/analytics/."""
+    """Path to SQLite DB. Uses PIPELINE_ENV (default: dev). Dev: dev_warehouse.db, prod: warehouse.db when pipeline uses shared warehouse name; otherwise {database} under external analytics dir."""
     cfg = get_sqlite_config(dataset_root)
     db_name = cfg["database"]
     env = os.environ.get("PIPELINE_ENV") or "dev"
+    base = get_analytics_path()
     if db_name == "warehouse.db":
         shared_name = "dev_warehouse.db" if env == "dev" else "warehouse.db"
-        return ROOT / "analytics" / shared_name
-    return dataset_root / "analytics" / db_name
+        return base / shared_name
+    return base / db_name
 
 
 def load_combine_config(path: Path) -> dict:

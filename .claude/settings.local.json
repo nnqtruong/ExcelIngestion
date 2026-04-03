@@ -16,7 +16,11 @@
       "Bash(\"..\\.venv-dbt\\Scripts\\dbt.exe\" debug)",
       "Bash(\"..\\.venv-dbt\\Scripts\\dbt.exe\" deps)",
       "Bash(\"..\\.venv-dbt\\Scripts\\dbt.exe\" run)",
-      "Bash(\"..\\.venv-dbt\\Scripts\\dbt.exe\" test)"
+      "Bash(\"..\\.venv-dbt\\Scripts\\dbt.exe\" test)",
+      "Bash(del analyticsdev_warehouse.db)",
+      "Bash(del powerbidev_warehouse.duckdb)",
+      "Bash(del datasetsdevtasksrawsample_tasks.xlsx)",
+      "Bash(rm:*)"
     ],
     "deny": [],
     "ask": []

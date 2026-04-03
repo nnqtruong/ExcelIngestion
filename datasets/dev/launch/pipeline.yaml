@@ -1,0 +1,23 @@
+# Dataset: launch (dev)
+# Environment path: datasets/dev/launch — run with: --dataset launch
+name: launch
+environment: dev
+description: "Launch tracking data - employee onboarding by track, division, and team lead"
+
+steps:
+  - 01_convert
+  - 02_normalize_schema
+  - 03_add_missing_columns
+  - 04_clean_errors
+  - 06_combine_datasets
+  - 08_validate
+  - 09_export_sqlite
+
+sqlite:
+  database: warehouse.db
+  table: launch
+  indexes:
+    - track
+    - division
+    - subdivision
+    - team_lead

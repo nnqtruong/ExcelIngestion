@@ -1,6 +1,6 @@
 # dbt_crc (crc_analytics)
 
-dbt project for CRC analytics. Connects to DuckDB (dev: `../powerbi/dev_warehouse.duckdb`, prod: `../powerbi/warehouse.duckdb`).
+dbt project for CRC analytics. DuckDB files are under **`{DATA_ROOT}/powerbi/`** (same external root as the Python pipeline). Set the **`DATA_ROOT`** environment variable to your data folder (e.g. `C:\...\ExcelIngestion_Data`), or rely on the default in `profiles.yml` (`../../ExcelIngestion_Data` relative to this directory when you run `cd dbt_crc` first). See comments at the top of `profiles.yml`.
 
 ## Python version (required)
 
@@ -29,10 +29,12 @@ This project runs **locally only**. There is no dbt Cloud setup. Ignore any `dbt
 
 ## Quick start (after venv and dbt debug)
 
+Use the same **`DATA_ROOT`** as the Python pipeline (default: `../../ExcelIngestion_Data` when you `cd dbt_crc`). PowerShell: `$env:DATA_ROOT="C:\path\to\ExcelIngestion_Data"`.
+
 ```bash
 cd dbt_crc
-dbt seed
-dbt run
+dbt seed    # required once per new DuckDB file (value maps)
+dbt run     # needs combined Parquet under DATA_ROOT for each source; use --select if you only have some datasets
 dbt test
 ```
 

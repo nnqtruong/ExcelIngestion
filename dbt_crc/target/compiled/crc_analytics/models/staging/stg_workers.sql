@@ -1,7 +1,7 @@
 
 
 with source as (
-  select * from '../datasets/dev/workers/analytics/combined.parquet'
+  select * from 'c:\Users\quang\CRC Code\ExcelIngestion_Data/dev/workers/analytics/combined.parquet'
 ),
 
 cleaned as (

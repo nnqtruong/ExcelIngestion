@@ -1,7 +1,7 @@
 # Excel Ingestion Pipeline - Current State (AI Context Document)
 
 > **Purpose**: This document provides full context for LLMs to understand and assist with this codebase.
-> **Last Updated**: 2026-03-31
+> **Last Updated**: 2026-04-03
 
 ---
 
@@ -18,6 +18,25 @@ A 10-step data pipeline that converts Excel files into clean, validated Parquet 
 - Power BI integration via DuckDB ODBC
 - **Incremental processing** with file fingerprinting (skip unchanged files)
 - **dbt analytics layer** with staging views and mart tables
+- **External data directory** so user files and databases survive repo replace/zip upgrades
+
+---
+
+## External Data Directory
+
+All **runtime** inputs and outputs use **`DATA_ROOT`** (environment variable). The default is **`../ExcelIngestion_Data`**, a folder **sibling to the `ExcelIngestion` repo** (same parent as the code).
+
+| Area | Location |
+|------|----------|
+| Init (once) | `python scripts/init_data_directory.py` |
+| Custom root | Set `DATA_ROOT` then run init (CMD: `set DATA_ROOT=D:\path`; PowerShell: `$env:DATA_ROOT="D:\path"`) |
+| Migrate old in-repo `datasets/` | `python scripts/migrate_data.py --dry-run` then `python scripts/migrate_data.py` |
+| Dataset layout | `{DATA_ROOT}/{env}/{dataset}/` with `raw/`, `clean/`, `analytics/`, `config/`, `logs/`, `_state/` |
+| Combined Parquet | `{DATA_ROOT}/{env}/{dataset}/analytics/combined.parquet` |
+| Shared SQLite | `{DATA_ROOT}/analytics/dev_warehouse.db` (dev) or `warehouse.db` (prod) |
+| DuckDB (Power BI, dbt) | `{DATA_ROOT}/powerbi/dev_warehouse.duckdb` or `warehouse.duckdb` |
+
+The in-repo **`datasets/`** tree holds **templates** copied by `init_data_directory.py`. Optional **backward compatibility:** `python run_pipeline.py --pipeline datasets/dev/tasks/pipeline.yaml` runs against the repo.
 
 ---
 
@@ -36,7 +55,16 @@ This project requires **two separate Python virtual environments** because dbt d
 
 ## Repository Structure
 
+Runtime data lives **next to** the repo under **`ExcelIngestion_Data/`** by default (not inside `ExcelIngestion/`).
+
 ```
+CRC Code/  (example parent)
+├── ExcelIngestion/              # Git repo — code, tests, config templates
+├── ExcelIngestion_Data/       # DATA_ROOT — Excel, Parquet, SQLite, DuckDB (not in git)
+│   ├── dev/, prod/
+│   ├── analytics/
+│   └── powerbi/
+
 ExcelIngestion/
 ├── run_pipeline.py              # Main orchestrator (--env, --dataset, --from-step)
 ├── requirements.txt             # Python dependencies
@@ -61,7 +89,7 @@ ExcelIngestion/
 │   ├── sqlite_views.py          # Create analytics views
 │   └── logging_util.py          # Logging configuration
 │
-├── scripts/                     # Step scripts (thin wrappers around lib/)
+├── scripts/                     # Step scripts (thin wrappers) + data layout helpers
 │   ├── 01_convert.py
 │   ├── 02_normalize_schema.py
 │   ├── 03_add_missing_columns.py
@@ -71,7 +99,9 @@ ExcelIngestion/
 │   ├── 07_handle_nulls.py
 │   ├── 08_validate.py
 │   ├── 09_export_sqlite.py
-│   └── 10_sqlite_views.py
+│   ├── 10_sqlite_views.py
+│   ├── init_data_directory.py
+│   └── migrate_data.py
 │
 ├── powerbi/                     # Power BI integration
 │   ├── create_duckdb.py         # Creates DuckDB from Parquet for ODBC
@@ -86,38 +116,12 @@ ExcelIngestion/
 ├── .venv/                       # Main pipeline venv (Python 3.14)
 ├── .venv-dbt/                   # dbt venv (Python 3.12)
 │
-├── datasets/                    # Data organized by environment
-│   ├── dev/                     # Development environment (default)
-│   │   ├── tasks/
-│   │   │   ├── pipeline.yaml    # Dataset configuration
-│   │   │   ├── config/
-│   │   │   │   ├── schema.yaml
-│   │   │   │   ├── combine.yaml
-│   │   │   │   └── value_maps.yaml
-│   │   │   ├── raw/             # Input Excel files (*.xlsx)
-│   │   │   ├── clean/           # Intermediate Parquet files
-│   │   │   ├── errors/          # Rows that failed type casting
-│   │   │   ├── analytics/       # combined.parquet output
-│   │   │   ├── logs/            # pipeline.log, validation_report.json
-│   │   │   └── _state/          # Fingerprint state (ingestion_state.json)
-│   │   ├── dept_mapping/        # Employee/department mapping
-│   │   ├── employees_master/    # Unified employee dimension (3 sources)
-│   │   ├── workers/             # Workday HR worker data
-│   │   └── revenue/             # Monthly revenue by broker/team
-│   └── prod/                    # Production environment
-│       ├── tasks/               # Same structure as dev
-│       ├── dept_mapping/
-│       ├── workers/
-│       └── revenue/
-│
-├── analytics/                   # Shared SQLite warehouse
-│   ├── dev_warehouse.db         # Dev environment (PIPELINE_ENV=dev)
-│   └── warehouse.db             # Prod environment (PIPELINE_ENV=prod)
-│
-└── powerbi/                     # DuckDB files for Power BI ODBC
-    ├── dev_warehouse.duckdb     # Dev (default)
-    └── warehouse.duckdb         # Prod
+├── datasets/                    # Templates for init_data_directory.py (optional --pipeline runs)
+│   ├── dev/
+│   └── prod/
 ```
+
+Under **`ExcelIngestion_Data/`** (default `DATA_ROOT`), each **`{env}/{dataset}/`** folder mirrors the old `datasets/` layout: `pipeline.yaml`, `config/`, `raw/`, `clean/`, `errors/`, `analytics/combined.parquet`, `logs/`, `_state/`. Shared **`analytics/`** holds SQLite; **`powerbi/`** holds DuckDB.
 
 ---
 
@@ -156,9 +160,11 @@ python run_pipeline.py --env prod --dataset tasks   # Production
 
 | Component | Dev | Prod |
 |-----------|-----|------|
-| Dataset path | `datasets/dev/{dataset}/` | `datasets/prod/{dataset}/` |
-| SQLite DB | `analytics/dev_warehouse.db` | `analytics/warehouse.db` |
-| DuckDB (Power BI) | `powerbi/dev_warehouse.duckdb` | `powerbi/warehouse.duckdb` |
+| Dataset path | `{DATA_ROOT}/dev/{dataset}/` | `{DATA_ROOT}/prod/{dataset}/` |
+| SQLite DB | `{DATA_ROOT}/analytics/dev_warehouse.db` | `{DATA_ROOT}/analytics/warehouse.db` |
+| DuckDB (Power BI) | `{DATA_ROOT}/powerbi/dev_warehouse.duckdb` | `{DATA_ROOT}/powerbi/warehouse.duckdb` |
+
+Default `{DATA_ROOT}` = `../ExcelIngestion_Data`. Override with env var `DATA_ROOT` or `run_pipeline.py --data-root`.
 
 ---
 
@@ -449,9 +455,9 @@ pyodbc
 
 3. **Incremental with fingerprinting**: File MD5 hashes stored in `_state/ingestion_state.json`. Step 01 skips unchanged files. Use `--force` to reprocess all.
 
-4. **Shared warehouse**: All datasets write to single `analytics/warehouse.db` for cross-dataset joins.
+4. **Shared warehouse**: All datasets write to a single SQLite file under `{DATA_ROOT}/analytics/` (`dev_warehouse.db` or `warehouse.db`) for cross-dataset joins.
 
-5. **Environment separation**: Dev and prod have completely separate data directories and output files.
+5. **Environment separation**: Dev and prod have completely separate trees under `DATA_ROOT`.
 
 6. **Default is always dev**: Running without environment flags uses dev to prevent accidental production changes.
 
@@ -460,6 +466,8 @@ pyodbc
 8. **Two Python venvs**: Main pipeline uses Python 3.14 (`.venv`), dbt uses Python 3.12 (`.venv-dbt`) due to dbt compatibility requirements.
 
 9. **Windows DuckDB workaround**: Write to temp file then `shutil.move()` to avoid "Access is denied" file locking errors.
+
+10. **External data directory**: User data and databases live under `DATA_ROOT` (default sibling `ExcelIngestion_Data/`), not inside the git repo, so code can be replaced via zip without touching Excel, Parquet, or warehouses. `init_data_directory.py` seeds layout from `datasets/`; `migrate_data.py` moves legacy in-repo files.
 
 ---
 
@@ -477,17 +485,19 @@ pyodbc
 
 ## File Paths Quick Reference
 
+`{DATA_ROOT}` defaults to **`../ExcelIngestion_Data`**. Template copies in git remain under **`datasets/`** for `init_data_directory.py`.
+
 | What | Path |
 |------|------|
 | Main orchestrator | `run_pipeline.py` |
 | Core logic | `lib/*.py` |
-| Step scripts | `scripts/01-10_*.py` |
-| Task schema | `datasets/{env}/tasks/config/schema.yaml` |
-| Employee schema | `datasets/{env}/dept_mapping/config/schema.yaml` |
-| Pipeline config | `datasets/{env}/{dataset}/pipeline.yaml` |
-| Input Excel | `datasets/{env}/{dataset}/raw/*.xlsx` |
-| Output Parquet | `datasets/{env}/{dataset}/analytics/combined.parquet` |
-| SQLite warehouse | `analytics/{dev_}warehouse.db` |
-| DuckDB (Power BI) | `powerbi/{dev_}warehouse.duckdb` |
-| Pipeline logs | `datasets/{env}/{dataset}/logs/pipeline.log` |
-| Validation report | `datasets/{env}/{dataset}/logs/validation_report.json` |
+| Step scripts | `scripts/01_*.py` … `scripts/10_*.py` |
+| Init external layout | `scripts/init_data_directory.py` |
+| Migrate legacy data | `scripts/migrate_data.py` |
+| Schema / pipeline (runtime) | `{DATA_ROOT}/{env}/{dataset}/config/schema.yaml`, `pipeline.yaml` |
+| Input Excel | `{DATA_ROOT}/{env}/{dataset}/raw/*.xlsx` |
+| Output Parquet | `{DATA_ROOT}/{env}/{dataset}/analytics/combined.parquet` |
+| SQLite warehouse | `{DATA_ROOT}/analytics/dev_warehouse.db` or `warehouse.db` |
+| DuckDB (Power BI, dbt) | `{DATA_ROOT}/powerbi/dev_warehouse.duckdb` or `warehouse.duckdb` |
+| Pipeline logs | `{DATA_ROOT}/{env}/{dataset}/logs/pipeline.log` |
+| Validation report | `{DATA_ROOT}/{env}/{dataset}/logs/validation_report.json` |

@@ -1,6 +1,6 @@
 """Create DuckDB database from Parquet files for Power BI ODBC consumption.
 Reads PIPELINE_ENV (default: dev). Dev uses dev_warehouse.duckdb; prod uses warehouse.duckdb.
-Parquet paths: datasets/{env}/tasks/analytics/ and datasets/{env}/dept_mapping/analytics/."""
+Parquet paths: {DATA_ROOT}/{env}/tasks|dept_mapping/analytics/combined.parquet (same as the pipeline)."""
 import os
 import sys
 from pathlib import Path
@@ -9,6 +9,10 @@ import duckdb
 
 # Resolve paths relative to this script's parent (project root)
 ROOT = Path(__file__).resolve().parent.parent
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from lib.data_root import get_data_root, get_powerbi_path
 
 
 def get_env() -> str:
@@ -18,11 +22,11 @@ def get_env() -> str:
 
 def _paths_for_env(env: str) -> tuple[Path, Path, Path]:
     """Return (DUCKDB_PATH, TASKS_PARQUET, DEPT_PARQUET) for the given environment."""
-    powerbi_dir = ROOT / "powerbi"
+    data_root = get_data_root()
     db_name = "dev_warehouse.duckdb" if env == "dev" else "warehouse.duckdb"
-    duckdb_path = powerbi_dir / db_name
-    tasks_parquet = ROOT / "datasets" / env / "tasks" / "analytics" / "combined.parquet"
-    dept_parquet = ROOT / "datasets" / env / "dept_mapping" / "analytics" / "combined.parquet"
+    duckdb_path = get_powerbi_path() / db_name
+    tasks_parquet = data_root / env / "tasks" / "analytics" / "combined.parquet"
+    dept_parquet = data_root / env / "dept_mapping" / "analytics" / "combined.parquet"
     return duckdb_path, tasks_parquet, dept_parquet
 
 

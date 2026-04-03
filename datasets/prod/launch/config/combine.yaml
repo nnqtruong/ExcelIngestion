@@ -1,0 +1,6 @@
+# Step 06: combine cleaned Parquet files into one dataset.
+# row_id is added as primary key in step 06; validation uses it for duplicate check.
+
+primary_key: row_id
+
+output: combined.parquet

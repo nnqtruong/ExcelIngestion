@@ -8,11 +8,11 @@ This folder contains the DuckDB warehouse and scripts used to feed **Power BI De
 
 - **DuckDB ODBC driver** — [Download and install](https://duckdb.org/docs/api/odbc/overview) the driver for your OS (64-bit on Windows).
 - **Power BI Desktop** — [Download](https://powerbi.microsoft.com/desktop) if needed.
-- **Pipeline run at least once** — From the project root:
+- **Pipeline run at least once** — DuckDB files are created under **`{DATA_ROOT}/powerbi/`** (default: `../ExcelIngestion_Data/powerbi/`). From the project root:
   ```bash
-  python powerbi/refresh.py
+  python powerbi/create_duckdb.py
   ```
-  This creates `powerbi/warehouse.duckdb` and all report tables.
+  Set `PIPELINE_ENV` and `DATA_ROOT` the same way as for `run_pipeline.py`.
 
 ---
 
@@ -32,8 +32,8 @@ Use the DuckDB ODBC driver so Power BI can read the database directly. Plan for 
 2. Go to the **User DSN** tab → **Add**.
 3. Select **DuckDB Driver** → Finish.
 4. Configure:
-   - **Database path:** Full path to the DuckDB file, e.g.  
-     `C:\Users\YourName\Code\Reporting\ExcelIngestion\powerbi\warehouse.duckdb`
+   - **Database path:** Full path to the DuckDB file under your external data root, e.g.  
+     `C:\Users\YourName\Code\ExcelIngestion_Data\powerbi\dev_warehouse.duckdb` (dev) or `...\warehouse.duckdb` (prod). Run `python powerbi/setup_odbc.py` to print the exact path.
    - **Data Source Name:** `ExcelIngestion_DuckDB`
 5. Click **OK** to save the DSN.
 
