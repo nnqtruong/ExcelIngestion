@@ -44,13 +44,18 @@ def coerce_all_to_string(df: pd.DataFrame) -> pd.DataFrame:
     as int64 in one chunk but string in another (e.g., taskid with mixed values).
     Step 04 (clean_errors) will cast to the correct types using schema.yaml.
     """
+    # First, ensure all column names are strings (Excel can have int column names from empty headers)
+    df.columns = [str(c) if c is not None else f"_unnamed_{i}" for i, c in enumerate(df.columns)]
+
+    # Build a new DataFrame with all string columns to avoid in-place type conflicts
+    result = pd.DataFrame()
     for col in df.columns:
-        # Use vectorized approach to avoid "truth value of Series is ambiguous" error
-        # which can occur when cells contain array-like objects or merged cell artifacts
-        df[col] = df[col].astype(object).where(df[col].notna(), None)
-        df[col] = df[col].apply(lambda x: str(x) if x is not None else None)
-        df[col] = df[col].astype("string")
-    return df
+        # Convert to object first, then to string
+        series = df[col].astype(object)
+        # Replace NaN/None with None, convert others to string
+        result[col] = series.apply(lambda x: str(x) if pd.notna(x) and x is not None else None)
+        result[col] = result[col].astype("string")
+    return result
 
 
 def _schema_defines_source_system(schema: dict) -> bool:
@@ -76,7 +81,14 @@ def convert_excel_to_parquet(
     ws = wb.active
 
     rows = ws.iter_rows(values_only=True)
-    headers = [str(h).strip() if h is not None else "" for h in next(rows)]
+    raw_headers = list(next(rows))
+    # Convert headers to strings, giving unique names to empty/None headers
+    headers = []
+    for i, h in enumerate(raw_headers):
+        if h is None or (isinstance(h, str) and h.strip() == ""):
+            headers.append(f"_unnamed_{i}")
+        else:
+            headers.append(str(h).strip())
 
     writer = None
     total_rows = 0
