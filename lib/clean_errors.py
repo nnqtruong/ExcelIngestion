@@ -30,33 +30,41 @@ def _quote_id(name: str) -> str:
 
 
 def _cast_expr(col: str, schema_dtype: str) -> str:
-    """Return DuckDB expression that casts column to schema type (returns NULL on failure)."""
+    """Return DuckDB expression that casts column to schema type (returns NULL on failure).
+
+    Empty strings are treated as NULL before casting to avoid flagging them as errors.
+    """
     q = _quote_id(col)
     norm = (schema_dtype or "string").strip().lower()
+    # For non-string types, convert empty strings to NULL first
+    nullif_expr = f"NULLIF(TRIM(CAST({q} AS VARCHAR)), '')"
     if norm == "int64":
-        return f"TRY_CAST({q} AS BIGINT)"
+        return f"TRY_CAST({nullif_expr} AS BIGINT)"
     if norm == "float64":
-        return f"TRY_CAST({q} AS DOUBLE)"
+        return f"TRY_CAST({nullif_expr} AS DOUBLE)"
     if norm == "datetime64":
-        return f"TRY_CAST({q} AS TIMESTAMP)"
+        return f"TRY_CAST({nullif_expr} AS TIMESTAMP)"
     if norm == "bool":
         return (
             f"CASE WHEN LOWER(TRIM(CAST({q} AS VARCHAR))) IN ('true','1','yes') THEN true "
-            f"WHEN LOWER(TRIM(CAST({q} AS VARCHAR))) IN ('false','0','no') THEN false ELSE NULL END"
+            f"WHEN LOWER(TRIM(CAST({q} AS VARCHAR))) IN ('false','0','no','') THEN false "
+            f"WHEN TRIM(CAST({q} AS VARCHAR)) = '' THEN NULL ELSE NULL END"
         )
     return f"CAST({q} AS VARCHAR)"
 
 
 def _good_cond(col: str, cast_expr: str) -> str:
-    """SQL condition: column is null or cast succeeded."""
+    """SQL condition: column is null/empty or cast succeeded."""
     q = _quote_id(col)
-    return f"({q} IS NULL OR ({cast_expr}) IS NOT NULL)"
+    # Treat empty strings as equivalent to NULL (not an error)
+    return f"({q} IS NULL OR TRIM(CAST({q} AS VARCHAR)) = '' OR ({cast_expr}) IS NOT NULL)"
 
 
 def _bad_cond(col: str, cast_expr: str) -> str:
-    """SQL condition: column is not null and cast failed."""
+    """SQL condition: column is not null/empty and cast failed."""
     q = _quote_id(col)
-    return f"({q} IS NOT NULL AND ({cast_expr}) IS NULL)"
+    # Empty strings are NOT errors - only non-empty values that fail to cast
+    return f"({q} IS NOT NULL AND TRIM(CAST({q} AS VARCHAR)) != '' AND ({cast_expr}) IS NULL)"
 
 
 def process_file(
