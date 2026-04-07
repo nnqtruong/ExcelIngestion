@@ -118,7 +118,10 @@ if __name__ == "__main__":
         print(e, file=sys.stderr)
         sys.exit(1)
     except Exception as e:
-        print(f"Failed to read Excel: {e}", file=sys.stderr)
+        # Include filepath in error message if available
+        file_info = f" ({filepath.name})" if 'filepath' in dir() else ""
+        print(f"Failed to read Excel{file_info}: {e}", file=sys.stderr)
+        log.exception("Convert failed for %s", filepath.name if 'filepath' in dir() else "unknown file")
         sys.exit(1)
 
     save_state(DATASET_ROOT, state)

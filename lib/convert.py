@@ -45,9 +45,10 @@ def coerce_all_to_string(df: pd.DataFrame) -> pd.DataFrame:
     Step 04 (clean_errors) will cast to the correct types using schema.yaml.
     """
     for col in df.columns:
-        df[col] = df[col].apply(
-            lambda x: str(x) if pd.notna(x) and x is not None else None
-        )
+        # Use vectorized approach to avoid "truth value of Series is ambiguous" error
+        # which can occur when cells contain array-like objects or merged cell artifacts
+        df[col] = df[col].astype(object).where(df[col].notna(), None)
+        df[col] = df[col].apply(lambda x: str(x) if x is not None else None)
         df[col] = df[col].astype("string")
     return df
 
