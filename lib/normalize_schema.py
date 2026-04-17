@@ -54,15 +54,15 @@ def process_file(path: Path, schema: dict, log: logging.Logger | None = None) ->
 
     finals_present = set(rename_map.values())
     order = get_column_order(schema)
+    # Only keep columns that are in column_order - drop extras not in schema
     ordered = [c for c in order if c in finals_present]
-    seen = set(ordered)
-    extra: list[str] = []
-    for c in original_columns:
-        f = rename_map[c]
-        if f not in seen:
-            extra.append(f)
-            seen.add(f)
-    output_cols = ordered + extra
+
+    # Log dropped columns for visibility
+    extra_cols = [f for f in finals_present if f not in set(order)]
+    if extra_cols:
+        logger.info("Dropping columns not in schema: %s", extra_cols)
+
+    output_cols = ordered
 
     def _original_for_final(final: str) -> str:
         for orig, fn in rename_map.items():

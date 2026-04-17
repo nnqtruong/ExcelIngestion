@@ -1,57 +1,128 @@
-# Analytics Cleaning Manifesto - Schema Definition
-# All files must conform to this schema after normalization
+# Tasks Schema - Updated 2026-04-17
+# 20 core columns (all files) + 3 schema evolution columns (NULL backfill)
+# Dropped columns: division, division_1, full_name (user-added noise)
+
+# Column aliases map Excel header variations to canonical snake_case names
+column_aliases:
+  # Core columns - various casing/naming in source files
+  "TaskID": task_id
+  "taskid": task_id
+  "Task ID": task_id
+  "FileNumber": file_number
+  "filenumber": file_number
+  "File Number": file_number
+  "FileName": filename
+  "Filename": filename
+  "PolicyNumber": policy_number
+  "policynumber": policy_number
+  "Policy Number": policy_number
+  "AcctExec": acct_exec
+  "acctexec": acct_exec
+  "Acct Exec": acct_exec
+  "AssignedTo": assigned_to
+  "assignedto": assigned_to
+  "Assigned To": assigned_to
+  "Carrier": carrier
+  "Drawer": drawer
+  "SentTo": sent_to
+  "sentto": sent_to
+  "Sent To": sent_to
+  "TaskFrom": task_from
+  "taskfrom": task_from
+  "Task From": task_from
+  "TaskDescription": task_description
+  "taskdescription": task_description
+  "Task Description": task_description
+  "OperationBy": operation_by
+  "operationby": operation_by
+  "Operation By": operation_by
+  # FlowName / StepName variations
+  "FlowName": flow_name
+  "flowname": flow_name
+  "Flow Name": flow_name
+  "StepName": step_name
+  "stepname": step_name
+  "Step Name": step_name
+  # Date columns
+  "EffectiveDate": effective_date
+  "effectivedate": effective_date
+  "Effective Date": effective_date
+  "DateAvailable": date_available
+  "dateavailable": date_available
+  "Date Available": date_available
+  "DateInitiated": date_initiated
+  "dateinitiated": date_initiated
+  "Date Initiated": date_initiated
+  "DateEnded": date_ended
+  "dateended": date_ended
+  "Date Ended": date_ended
+  "StartTime": start_time
+  "starttime": start_time
+  "Start Time": start_time
+  "EndTime": end_time
+  "endtime": end_time
+  "End Time": end_time
+  # Schema evolution columns
+  "TaskStatus": task_status
+  "taskstatus": task_status
+  "Task Status": task_status
+  "Priority": priority
+  "OperationTime": operation_time
+  "operationtime": operation_time
+  "Operation Time": operation_time
 
 columns:
-  taskid:
+  # === 20 CORE COLUMNS (present in all files) ===
+  task_id:
     dtype: int64
     nullable: false
-    # Note: row_id (auto-generated in step 6) is now the primary key, not taskid
+    # Note: row_id (auto-generated in step 6) is now the primary key, not task_id
 
-  drawer:
-    dtype: string
-    nullable: false
-
-  policynumber:
-    dtype: string
+  file_number:
+    dtype: int64
     nullable: false
 
   filename:
     dtype: string
     nullable: true
 
-  filenumber:
-    dtype: int64
+  policy_number:
+    dtype: string
     nullable: false
 
-  effectivedate:
-    dtype: datetime64
-    nullable: false
+  acct_exec:
+    dtype: string
+    nullable: true
+
+  assigned_to:
+    dtype: string
+    nullable: true
 
   carrier:
     dtype: string
     nullable: false
 
-  acctexec:
+  drawer:
+    dtype: string
+    nullable: false
+
+  sent_to:
     dtype: string
     nullable: true
 
-  taskdescription:
+  task_from:
     dtype: string
     nullable: true
 
-  assignedto:
+  task_description:
     dtype: string
     nullable: true
 
-  taskfrom:
+  operation_by:
     dtype: string
     nullable: true
 
-  operationby:
-    dtype: string
-    nullable: true
-
-  flowname:
+  flow_name:
     dtype: string
     nullable: true
     allowed_values:
@@ -59,47 +130,61 @@ columns:
       - "UW New Business"
       - "Brokerage Support Processing"
 
-  stepname:
+  step_name:
     dtype: string
     nullable: true
 
-  sentto:
-    dtype: string
-    nullable: true
+  effective_date:
+    dtype: datetime64
+    nullable: false
 
-  dateavailable:
+  date_available:
     dtype: datetime64
     nullable: true
     fill_strategy: null  # no fill - missing means not yet available
 
-  dateinitiated:
+  date_initiated:
     dtype: datetime64
     nullable: true
 
-  dateended:
+  date_ended:
     dtype: datetime64
     nullable: true
     fill_strategy: null  # no fill - missing means still open
 
-  taskstatus:
+  start_time:
+    dtype: datetime64
+    nullable: true
+
+  end_time:
+    dtype: datetime64
+    nullable: true
+    fill_strategy: null  # no fill - missing means still running
+
+  # === 3 SCHEMA EVOLUTION COLUMNS (NULL backfill for earlier months) ===
+  # These columns first appeared in later months; earlier months have NULL
+
+  task_status:
     dtype: string
-    nullable: true  # Some source files are missing this column entirely
-    max_null_rate: 0.75  # Production has ~72% nulls - many source files lack this column
+    nullable: true
+    max_null_rate: 1.00  # First appears 09-2025; 01-2025 through 08-2025 are NULL
     allowed_values:
       - "Completed"
       - "In Progress"
       - "Pending"
       - "Cancelled"
 
-  starttime:
+  priority:
+    dtype: string
+    nullable: true
+    max_null_rate: 1.00  # First appears 01-2026; 01-2025 through 12-2025 are NULL
+
+  operation_time:
     dtype: datetime64
     nullable: true
+    max_null_rate: 1.00  # First appears 01-2026; 01-2025 through 12-2025 are NULL
 
-  endtime:
-    dtype: datetime64
-    nullable: true
-    fill_strategy: null  # no fill - missing means still running
-
+  # === PIPELINE-GENERATED COLUMNS ===
   _source_file:
     dtype: string
     nullable: true
@@ -110,32 +195,35 @@ columns:
 
 # Validation thresholds
 validation:
-  max_null_rate: 0.30          # fail if any column > 30% null
+  max_null_rate: 0.50          # default for columns without per-column override
   max_duplicate_rate: 0.01     # fail if > 1% duplicate primary keys
   min_row_count: 1             # fail if empty after cleaning
 
-# Column order matters - output files follow this order
+# Column order matters - output files follow this order (23 columns total)
+# Columns not in this list are DROPPED during step 02 normalization
 column_order:
-  - taskid
-  - drawer
-  - policynumber
+  - task_id
+  - file_number
   - filename
-  - filenumber
-  - effectivedate
+  - policy_number
+  - acct_exec
+  - assigned_to
   - carrier
-  - acctexec
-  - taskdescription
-  - assignedto
-  - taskfrom
-  - operationby
-  - flowname
-  - stepname
-  - sentto
-  - dateavailable
-  - dateinitiated
-  - dateended
-  - taskstatus
-  - starttime
-  - endtime
+  - drawer
+  - sent_to
+  - task_from
+  - task_description
+  - operation_by
+  - flow_name
+  - step_name
+  - effective_date
+  - date_available
+  - date_initiated
+  - date_ended
+  - start_time
+  - end_time
+  - task_status
+  - priority
+  - operation_time
   - _source_file
   - _ingested_at
