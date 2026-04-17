@@ -1,7 +1,7 @@
 # Excel Ingestion Pipeline - Current State (AI Context Document)
 
 > **Purpose**: This document provides full context for LLMs to understand and assist with this codebase.
-> **Last Updated**: 2026-04-03
+> **Last Updated**: 2026-04-17
 
 ---
 
@@ -98,6 +98,8 @@ ExcelIngestion/
 │   ├── 07_handle_nulls.py
 │   ├── 08_validate.py
 │   ├── 09_export_sqlite.py
+│   ├── compare_schemas.py       # Schema comparison tool (--preflight)
+│   ├── diagnose_schema.py       # Parquet schema diagnostics
 │   ├── init_data_directory.py
 │   └── migrate_data.py
 │
@@ -319,6 +321,9 @@ python run_pipeline.py --dataset tasks
 python run_pipeline.py --dataset dept_mapping
 python run_pipeline.py --dataset employees_master
 
+# Run all datasets
+python run_pipeline.py --all
+
 # Prod
 python run_pipeline.py --env prod --dataset tasks
 
@@ -327,6 +332,25 @@ python run_pipeline.py --from-step 6
 
 # Dry run (validate only)
 python run_pipeline.py --dry-run
+
+# Preflight schema check (recommended before running)
+python run_pipeline.py --dataset tasks --preflight
+python run_pipeline.py --all --preflight --dry-run
+```
+
+### Schema Comparison Tool
+```bash
+# Compare Excel headers across all files in a dataset
+python scripts/compare_schemas.py --dataset tasks --env dev
+
+# Check against schema.yaml (shows aliases, missing/extra columns)
+python scripts/compare_schemas.py --dataset tasks --env dev --check-against
+
+# Compare all files against a specific baseline
+python scripts/compare_schemas.py --dataset tasks --env dev --baseline "Jan 2025.xlsx"
+
+# Export full report as JSON
+python scripts/compare_schemas.py --dataset tasks --env dev --output schema_report.json
 ```
 
 ### Generate Test Data
@@ -477,6 +501,8 @@ pyodbc
 4. **Add/modify analytics mart**: Edit dbt_crc/models/marts/*.sql, run `dbt build`
 5. **Update Power BI database**: Run `python powerbi/create_duckdb.py` after dbt changes
 6. **Debug pipeline failures**: Check logs/ directory, errors/ directory
+7. **Check schema drift before running**: Run `python scripts/compare_schemas.py --dataset NAME --check-against`
+8. **Preflight check all datasets**: Run `python run_pipeline.py --all --preflight --dry-run`
 
 ---
 

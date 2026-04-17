@@ -283,6 +283,49 @@ When you have new Excel files:
 
 ---
 
+## Schema Comparison Tool
+
+When new Excel files arrive with different columns, the pipeline may fail at the combine step. Use the schema comparison tool to check for column differences **before** running the pipeline.
+
+### Standalone Usage
+
+Compare all Excel files in a dataset's raw/ folder:
+```
+python scripts/compare_schemas.py --dataset tasks --env dev
+```
+
+Compare against the expected schema.yaml (shows aliases and missing/extra columns):
+```
+python scripts/compare_schemas.py --dataset tasks --env dev --check-against
+```
+
+Compare all files against a specific baseline file:
+```
+python scripts/compare_schemas.py --dataset tasks --env dev --baseline "Jan 2025.xlsx"
+```
+
+Export full report as JSON:
+```
+python scripts/compare_schemas.py --dataset tasks --env dev --output schema_report.json
+```
+
+### Preflight Check (Recommended)
+
+Run schema validation before the pipeline with `--preflight`:
+```
+python run_pipeline.py --dataset tasks --preflight
+python run_pipeline.py --all --preflight --dry-run
+```
+
+**Preflight behavior:**
+- **Warns** if source files have extra columns (they will be dropped by step 02)
+- **Fails** if schema.yaml expects columns missing from ALL source files (likely a config error)
+- **Passes** and continues if everything looks good
+
+This catches schema drift early, before the pipeline spends time processing data that will fail later.
+
+---
+
 ## Quick Reference
 
 | Task | Command |
@@ -294,6 +337,10 @@ When you have new Excel files:
 | Run employee pipeline | `python run_pipeline.py --dataset dept_mapping` |
 | Run employees_master | `python run_pipeline.py --dataset employees_master` |
 | Run revenue pipeline | `python run_pipeline.py --dataset revenue` |
+| Run all datasets | `python run_pipeline.py --all` |
+| Run with preflight check | `python run_pipeline.py --dataset tasks --preflight` |
+| Compare schemas | `python scripts/compare_schemas.py --dataset tasks --env dev` |
+| Check against schema.yaml | `python scripts/compare_schemas.py --dataset tasks --env dev --check-against` |
 | Initialize external data folder | `python scripts/init_data_directory.py` |
 | Run dbt models | `.venv-dbt\Scripts\activate` then `set DATA_ROOT=...` and `cd dbt_crc && dbt seed && dbt run` |
 | Test dbt models | `dbt test` |
