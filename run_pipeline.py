@@ -15,7 +15,7 @@ ROOT = Path(__file__).resolve().parent
 SCRIPTS_DIR = ROOT / "scripts"
 
 DEFAULT_DATASET = "tasks"
-ALL_DATASETS = ["tasks", "dept_mapping", "employees_master", "workers"]
+ALL_DATASETS = ["tasks", "dept_mapping", "employees_master", "workers", "launch", "revenue"]
 
 STEPS = [
     (1, "01_convert", SCRIPTS_DIR / "01_convert.py"),
@@ -104,6 +104,40 @@ def dry_run_validate(dataset_root: Path, log: logging.Logger) -> bool:
     return ok
 
 
+def run_preflight(dataset_root: Path, log: logging.Logger) -> bool:
+    """Run schema preflight check and gate pipeline on major schema mismatches."""
+    from scripts.compare_schemas import check_against_schema
+
+    raw_dir = dataset_root / "raw"
+    schema_path = dataset_root / "config" / "schema.yaml"
+
+    if not raw_dir.exists() or not any([*raw_dir.glob("*.xlsx"), *raw_dir.glob("*.xlsm")]):
+        log.info("Preflight: No Excel files in raw/, skipping")
+        return True
+
+    result = check_against_schema(raw_dir, schema_path)
+    if "error" in result:
+        log.error("Preflight FAILED: %s", result["error"])
+        return False
+
+    if result.get("extra_in_files"):
+        log.warning(
+            "Preflight: Extra columns in source files (will be dropped): %s",
+            ", ".join(result["extra_in_files"]),
+        )
+
+    if result.get("missing_from_all_files"):
+        log.error(
+            "Preflight FAILED: Schema expects columns missing from ALL source files: %s",
+            ", ".join(result["missing_from_all_files"]),
+        )
+        log.error("Check schema.yaml or column_aliases configuration")
+        return False
+
+    log.info("Preflight: Schema check passed")
+    return True
+
+
 def run_step(
     step_num: int,
     name: str,
@@ -182,6 +216,11 @@ def main() -> int:
         help="Validate configs and inputs only; do not run steps or write output.",
     )
     parser.add_argument(
+        "--preflight",
+        action="store_true",
+        help="Run schema comparison before pipeline. Warns on extra columns, errors if schema columns are missing from all files.",
+    )
+    parser.add_argument(
         "--from-step",
         type=int,
         default=1,
@@ -196,7 +235,7 @@ def main() -> int:
     parser.add_argument(
         "--all",
         action="store_true",
-        help="Run all datasets (tasks, dept_mapping, employees_master, workers) in sequence.",
+        help="Run all datasets (tasks, dept_mapping, employees_master, workers, launch, revenue) in sequence.",
     )
     parser.add_argument(
         "--force",
@@ -268,6 +307,10 @@ def run_single_dataset(pipeline_path: Path, args: argparse.Namespace) -> int:
     log.info("Data root: %s", get_data_root())
     log.info("Environment: %s", args.env)
     log.info("Dataset root: %s", dataset_root)
+
+    if args.preflight:
+        if not run_preflight(dataset_root, log):
+            return 1
 
     if args.dry_run:
         log.info("Dry run: validating config and inputs (no writes).")

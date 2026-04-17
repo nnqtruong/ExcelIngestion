@@ -22,7 +22,9 @@
       "Bash(del datasetsdevtasksrawsample_tasks.xlsx)",
       "Bash(rm:*)",
       "Bash(dir /b \"c:\\Users\\quang\\CRC Code\\ExcelIngestion\\*.md\")",
-      "Bash(test:*)"
+      "Bash(test:*)",
+      "Bash(dir /b \"c:\\Users\\quang\\CRC Code\\ExcelIngestion_Data\\dev\")",
+      "Bash(dir /b 'c:\\Users\\quang\\CRC Code\\ExcelIngestion_Data\\dev\\tasks\\raw')"
     ],
     "deny": [],
     "ask": []
