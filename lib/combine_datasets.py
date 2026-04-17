@@ -6,6 +6,7 @@ import duckdb
 import psutil
 
 from lib.config import get_combined_path, load_combine_config
+from lib.sql_utils import escape_sql_string
 from lib.logging_util import monitor_step
 
 
@@ -13,11 +14,6 @@ def get_parquet_files(clean_dir: Path) -> list[Path]:
     """Return sorted list of Parquet paths (exclude _errors and tmp_*)."""
     all_parquet = sorted(clean_dir.glob("*.parquet"))
     return [p for p in all_parquet if not p.name.endswith("_errors.parquet") and not p.name.startswith("tmp")]
-
-
-def _escape_sql(s: str) -> str:
-    """Escape single quotes for SQL string literal."""
-    return s.replace("'", "''")
 
 
 def combine_files(
@@ -44,7 +40,7 @@ def combine_files(
     files_to_combine = []
     reference_cols = None
     for f in files:
-        path_sql = _escape_sql(f.resolve().as_posix())
+        path_sql = escape_sql_string(f.resolve().as_posix())
         n = conn.execute(f"SELECT COUNT(*) FROM read_parquet('{path_sql}')").fetchone()[0]
         cols = [d[0] for d in conn.execute(f"SELECT * FROM read_parquet('{path_sql}') LIMIT 0").description]
         total_from_files += n
@@ -77,8 +73,8 @@ def combine_files(
     # Use UNION ALL BY NAME to handle minor column differences gracefully
     union_parts = []
     for f in files_to_combine:
-        path_sql = _escape_sql(f.resolve().as_posix())
-        name_sql = _escape_sql(f.name)
+        path_sql = escape_sql_string(f.resolve().as_posix())
+        name_sql = escape_sql_string(f.name)
         # If parquet has _source_file/_ingested_at (from add_missing_columns), overwrite them
         union_parts.append(
             f"SELECT * EXCLUDE (_source_file, _ingested_at), "
@@ -88,7 +84,7 @@ def combine_files(
     union_query = " UNION ALL BY NAME ".join(union_parts)
 
     # Add row_id and write directly to Parquet (streaming; no full dataset in memory)
-    out_sql = _escape_sql(str(output_path.as_posix()))
+    out_sql = escape_sql_string(str(output_path.as_posix()))
     conn.execute(f"""
         COPY (
             SELECT ROW_NUMBER() OVER () AS row_id, * FROM ({union_query}) sub

@@ -13,7 +13,7 @@ A 9-step data pipeline that converts Excel files into clean, validated Parquet d
 - Handles 500K+ row Excel files with low memory usage (chunked processing)
 - Processes 6M+ total rows across 12 files in production
 - Dev/prod environment separation
-- Multi-dataset support (tasks, dept_mapping, employees_master, workers, revenue)
+- Multi-dataset support (tasks, dept_mapping, employees_master, workers, revenue, launch)
 - Column aliasing for multi-schema source files
 - Power BI integration via DuckDB ODBC
 - **Incremental processing** with file fingerprinting (skip unchanged files)
@@ -67,26 +67,31 @@ CRC Code/  (example parent)
 
 ExcelIngestion/
 ├── run_pipeline.py              # Main orchestrator (--env, --dataset, --from-step)
+├── refresh.py                   # One-command pipeline + dbt orchestrator
 ├── requirements.txt             # Python dependencies
 ├── README.md                    # Technical documentation
 ├── USER_GUIDE.md                # Non-technical user guide
-├── current_state.md             # This file (AI context)
+├── docs/
+│   └── current_state.md         # This file (AI context)
 │
 ├── lib/                         # Core pipeline logic (reusable functions)
 │   ├── __init__.py
 │   ├── paths.py                 # Path resolution, environment detection
+│   ├── data_root.py             # External data root management (DATA_ROOT resolution)
 │   ├── config.py                # YAML config loaders
 │   ├── schema.py                # Schema loading, column aliases, validation rules
 │   ├── convert.py               # Excel to Parquet conversion
 │   ├── normalize_schema.py      # Column name normalization + aliasing
 │   ├── add_missing_columns.py   # Add schema columns missing from source
-│   ├── clean_errors.py          # Type casting, error row extraction
+│   ├── clean_errors.py          # Type casting, null_strings, error row extraction
 │   ├── normalize_values.py      # Value mapping transformations
 │   ├── combine_datasets.py      # Union files, add row_id primary key
 │   ├── handle_nulls.py          # Null fill strategies
 │   ├── validate.py              # Validation checks, JSON report
-│   ├── export_sqlite.py         # SQLite export
-│   └── logging_util.py          # Logging configuration
+│   ├── export_sqlite.py         # SQLite export (chunked for large Parquet)
+│   ├── fingerprint.py           # File MD5 hashing, incremental state tracking
+│   ├── logging_util.py          # Logging configuration
+│   └── sql_utils.py             # SQL escape utilities (escape_sql_string, quote_identifier)
 │
 ├── scripts/                     # Step scripts (thin wrappers) + data layout helpers
 │   ├── 01_convert.py
@@ -105,13 +110,17 @@ ExcelIngestion/
 │
 ├── powerbi/                     # Power BI integration
 │   ├── create_duckdb.py         # Creates DuckDB from Parquet for ODBC
+│   ├── create_report_tables.py  # Verifies dbt-built DuckDB tables exist
 │   ├── setup_odbc.py            # Prints ODBC connection string
 │   └── README.md
 │
 ├── tests/                       # Test suite and fixtures
 │   ├── test_pipeline.py         # Pytest tests
+│   ├── conftest.py              # Pytest configuration (adds project root to path)
 │   ├── create_fixtures.py       # Generate mock task Excel files
-│   └── create_dept_fixtures.py  # Generate mock employee Excel file
+│   ├── create_dept_fixtures.py  # Generate mock employee Excel file
+│   ├── validate_employees_master_output.py  # One-off validation for employees_master
+│   └── compare_dbt_vs_pipeline.py  # Compare dbt marts with pipeline Parquet output
 │
 ├── .venv/                       # Main pipeline venv (Python 3.14)
 ├── .venv-dbt/                   # dbt venv (Python 3.12)
@@ -132,14 +141,20 @@ Under **`ExcelIngestion_Data/`** (default `DATA_ROOT`), each **`{env}/{dataset}/
 | 01 | convert | Excel (.xlsx) → Parquet with chunked reading |
 | 02 | normalize_schema | Lowercase columns, apply column_aliases, reorder to schema |
 | 03 | add_missing_columns | Add schema columns missing from source files |
-| 04 | clean_errors | Cast types, copy bad rows to `errors/` |
+| 04 | clean_errors | Cast types (`null_strings` → null before cast), copy bad rows to `errors/` |
 | 05 | normalize_values | Apply value_maps.yaml transformations |
 | 06 | combine_datasets | Union all files, add `row_id` primary key |
 | 07 | handle_nulls | Apply fill strategies from schema |
 | 08 | validate | Check nulls, dtypes, row count; write JSON report |
-| 09 | export_sqlite | Write to SQLite (shared warehouse.db) |
+| 09 | export_sqlite | Write to SQLite (shared warehouse.db); chunked PyArrow read if Parquet > 50MB |
 
 **Note**: Pipeline stops at step 09. dbt handles all analytics (staging views and marts) in DuckDB. Some datasets (like dept_mapping) use a subset of steps defined in their pipeline.yaml.
+
+### Step 04 & 09 notes (April 2026)
+
+- **Tasks `file_number`**: Canonical column is **`file_number`** with dtype **`string`** (not `int64`). AMS exports include alphanumeric identifiers (for example values starting with `~` or containing hyphens); storing as string avoids step 04 cast failures and whole-row copies to `errors/`.
+- **`null_strings` (step 04)**: Optional per-column list in unified `dataset.yaml` (or split schema). `lib/clean_errors.py` maps each listed literal (after `TRIM`) to SQL `NULL` via nested `NULLIF` before `TRY_CAST`, in addition to treating empty strings as null. Tasks datetime columns use this for literals such as `NULL`, `null`, `N/A`, and `""` (see `dept_mapping` for the same pattern on string fields).
+- **Chunked SQLite export (step 09)**: `lib/export_sqlite.py` reads large combined Parquet with **PyArrow** `ParquetFile.iter_batches` (default batch size 100,000 rows) when the file is **over 50MB** on disk; smaller files still use a single `pandas.read_parquet` read. Indexes are created after all chunks are written.
 
 ---
 
@@ -179,7 +194,7 @@ Default `{DATA_ROOT}` = `../ExcelIngestion_Data`. Override with env var `DATA_RO
 | drawer | string | No | Office/department code |
 | policynumber | string | No | |
 | filename | string | Yes | Client name |
-| filenumber | int64 | No | |
+| file_number | string | No | Alphanumeric AMS file identifiers; string dtype (not int64) |
 | effectivedate | datetime64 | No | |
 | carrier | string | No | Insurance carrier |
 | acctexec | string | Yes | Account executive |
@@ -263,6 +278,91 @@ Default `{DATA_ROOT}` = `../ExcelIngestion_Data`. Override with env var `DATA_RO
 
 **SQLite**: Table `employees_master` in shared warehouse.db
 
+### 4. Workers Dataset
+**Purpose**: Workday/HR worker export with unified schema for employee data
+
+**Schema** (32 columns):
+| Column | Type | Nullable | Notes |
+|--------|------|----------|-------|
+| employee_id | string | No | Primary identifier |
+| teammate | string | No | Employee name |
+| current_status | string | No | Active/Inactive status |
+| country | string | Yes | |
+| company_hierarchy | string | Yes | |
+| company | string | Yes | |
+| location | string | Yes | |
+| cost_center_hierarchy | string | Yes | |
+| cost_center | string | Yes | |
+| operating_segment | string | Yes | |
+| business_unit | string | Yes | |
+| supervisory_organization | string | Yes | |
+| job_profile | string | Yes | |
+| business_title | string | Yes | |
+| position | string | Yes | |
+| management_level | string | Yes | |
+| hire_date | datetime64 | Yes | |
+| original_hire_date | datetime64 | Yes | |
+| continuous_service_date | datetime64 | Yes | |
+| last_termination_date | datetime64 | Yes | max_null_rate: 1.0 |
+| scheduled_weekly_hours | float64 | Yes | |
+| fte | float64 | Yes | |
+| full_part_time | string | Yes | Aliased from multiple variations |
+| pay_rate_type | string | Yes | |
+| exempt_status | string | Yes | Aliased from "Exempt / Non-Exempt" variations |
+| worker_type | string | Yes | |
+| worker_sub_type | string | Yes | |
+| employee_type | string | Yes | |
+| work_email | string | Yes | |
+| direct_manager | string | Yes | |
+| skip_level_manager | string | Yes | |
+| executive_leader | string | Yes | |
+| _source_file | string | Yes | Auto-added |
+| _ingested_at | datetime64 | Yes | Auto-added |
+
+**Key Feature**: Extensive `column_aliases` to handle multiple header variations (e.g., "Full / Part Time", "Full/Part Time", "Time Type" all map to `full_part_time`).
+
+**SQLite**: Table `workers` in shared warehouse.db
+
+### 5. Revenue Dataset
+**Purpose**: Revenue data by broker, team, and division for financial reporting
+
+**Schema** (11 columns):
+| Column | Type | Nullable | Notes |
+|--------|------|----------|-------|
+| year | int64 | No | Fiscal year |
+| quarter | string | No | Q1, Q2, Q3, Q4 |
+| acct_cur | string | No | Account currency |
+| month | int64 | No | Month number (1-12) |
+| subdivision | string | No | |
+| division_name | string | No | |
+| team_name | string | No | |
+| broker_name | string | No | |
+| revenue | float64 | No | Revenue amount |
+| _source_file | string | Yes | Auto-added |
+| _ingested_at | datetime64 | Yes | Auto-added |
+
+**SQLite**: Table `revenue` in shared warehouse.db
+
+### 6. Launch Dataset
+**Purpose**: Employee onboarding/launch tracking by track, division, and team
+
+**Schema** (11 columns):
+| Column | Type | Nullable | Notes |
+|--------|------|----------|-------|
+| name | string | No | Aliased from "First & Last Name" |
+| email | string | No | |
+| track | int64 | No | Onboarding track number |
+| division | string | No | |
+| subdivision | string | No | |
+| lob | string | No | Line of business |
+| team_lead | string | No | |
+| team_lead_email | string | No | |
+| office_location | string | No | |
+| _source_file | string | Yes | Auto-added |
+| _ingested_at | datetime64 | Yes | Auto-added |
+
+**SQLite**: Table `launch` in shared warehouse.db
+
 ---
 
 ## Configuration Files
@@ -312,6 +412,61 @@ taskstatus:
 
 ---
 
+## Unified Configuration (dataset.yaml)
+
+As of April 2026, datasets support a **unified `dataset.yaml`** that merges all config files into one:
+
+```yaml
+# dataset.yaml - single source of truth for dataset configuration
+name: tasks
+environment: dev
+
+sqlite:
+  database: warehouse.db
+  table: tasks
+
+steps:
+  - 01_convert
+  - 02_normalize_schema
+  # ...
+
+# Schema section (formerly config/schema.yaml)
+schema:
+  columns:
+    - name: task_id
+      dtype: int64
+      nullable: false
+    # ...
+  column_aliases:
+    "Task ID": "task_id"
+  column_order:
+    - row_id
+    - task_id
+    # ...
+
+# Value maps section (formerly config/value_maps.yaml)
+value_maps:
+  task_status:
+    "completed": "Completed"
+    "COMPLETED": "Completed"
+
+# Combine section (formerly config/combine.yaml)
+combine:
+  primary_key: row_id
+  output: combined.parquet
+```
+
+**Loading priority** (in `lib/config.py`):
+1. If `dataset.yaml` exists → use unified config
+2. Else → merge `pipeline.yaml` + `config/schema.yaml` + `config/value_maps.yaml` + `config/combine.yaml`
+
+**Benefits**:
+- Single file to edit per dataset
+- Reduces config file sprawl (4 files → 1)
+- Legacy split-file configs still work (backward compatible)
+
+---
+
 ## Key Commands
 
 ### Run Pipeline
@@ -320,6 +475,9 @@ taskstatus:
 python run_pipeline.py --dataset tasks
 python run_pipeline.py --dataset dept_mapping
 python run_pipeline.py --dataset employees_master
+python run_pipeline.py --dataset workers
+python run_pipeline.py --dataset revenue
+python run_pipeline.py --dataset launch
 
 # Run all datasets
 python run_pipeline.py --all
@@ -337,6 +495,29 @@ python run_pipeline.py --dry-run
 python run_pipeline.py --dataset tasks --preflight
 python run_pipeline.py --all --preflight --dry-run
 ```
+
+### One-Command Refresh (Pipeline + dbt)
+```bash
+# Run pipeline + dbt for a single dataset (dev)
+python refresh.py --dataset tasks
+
+# Run all datasets + dbt (dev)
+python refresh.py --all
+
+# Production
+python refresh.py --env prod --dataset tasks
+
+# Skip pipeline (dbt only)
+python refresh.py --skip-pipeline --dataset tasks
+
+# Skip dbt (pipeline only)
+python refresh.py --skip-dbt --dataset tasks
+
+# Force reprocess all files
+python refresh.py --dataset tasks --force
+```
+
+**Note**: `refresh.py` automatically uses `.venv-dbt/Scripts/dbt.exe` for dbt commands, so you don't need to switch venvs.
 
 ### Schema Comparison Tool
 ```bash
@@ -418,6 +599,9 @@ dbt build    # Run + test
 | `tasks` | tasks/analytics/combined.parquet |
 | `employees` | dept_mapping/analytics/combined.parquet |
 | `employees_master` | employees_master/analytics/combined.parquet |
+| `workers` | workers/analytics/combined.parquet |
+| `revenue` | revenue/analytics/combined.parquet |
+| `launch` | launch/analytics/combined.parquet |
 
 ### dbt Marts
 | Mart | Description |

@@ -1,6 +1,6 @@
 
 with source as (
-  select * from 'c:\Users\quang\CRC Code\ExcelIngestion_Data/dev/dept_mapping/analytics/combined.parquet'
+  select * from 'C:\Users\quang\CRC Code\ExcelIngestion_Data/dev/dept_mapping/analytics/combined.parquet'
 ),
 normalized as (
   select

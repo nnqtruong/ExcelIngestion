@@ -3,9 +3,10 @@ import json
 from pathlib import Path
 
 import duckdb
-import yaml
 
+from lib.config import load_combine_config
 from lib.schema import load_schema
+from lib.sql_utils import escape_sql_string, quote_identifier
 from lib.logging_util import monitor_step
 
 
@@ -70,14 +71,6 @@ def dtype_matches(schema_dtype: str, actual_dtype: str) -> bool:
     return get_expected_dtype({"dtype": schema_dtype}) == actual_dtype
 
 
-def _escape_sql(s: str) -> str:
-    return s.replace("'", "''")
-
-
-def _quote_id(name: str) -> str:
-    return '"' + name.replace('"', '""') + '"'
-
-
 def run_validation(
     path: Path,
     schema: dict,
@@ -86,7 +79,7 @@ def run_validation(
     """Run all checks via DuckDB queries against Parquet. Return report dict with 'passed' and 'checks'."""
     conn = duckdb.connect()
     input_path = path.resolve().as_posix()
-    in_sql = _escape_sql(input_path)
+    in_sql = escape_sql_string(input_path)
     tbl = f"read_parquet('{in_sql}')"
 
     n_rows = conn.execute(f"SELECT COUNT(*) FROM {tbl}").fetchone()[0]
@@ -135,12 +128,12 @@ def run_validation(
             report["passed"] = False
         else:
             if len(primary_key) == 1:
-                pk_col = _quote_id(primary_key[0])
+                pk_col = quote_identifier(primary_key[0])
                 n_dup = conn.execute(
                     f"SELECT SUM(c) FROM (SELECT {pk_col}, COUNT(*) AS c FROM {tbl} GROUP BY {pk_col} HAVING COUNT(*) > 1) sub"
                 ).fetchone()[0] or 0
             else:
-                pk_list = ", ".join(_quote_id(c) for c in primary_key)
+                pk_list = ", ".join(quote_identifier(c) for c in primary_key)
                 n_dup = conn.execute(
                     f"SELECT SUM(c) FROM (SELECT {pk_list}, COUNT(*) AS c FROM {tbl} GROUP BY {pk_list} HAVING COUNT(*) > 1) sub"
                 ).fetchone()[0] or 0
@@ -168,7 +161,7 @@ def run_validation(
     for name, spec in cols_list:
         if name not in file_columns:
             continue
-        q = _quote_id(name)
+        q = quote_identifier(name)
         rate = conn.execute(
             f"SELECT COUNT(*) FILTER (WHERE {q} IS NULL) * 1.0 / NULLIF(COUNT(*), 0) FROM {tbl}"
         ).fetchone()[0]
@@ -220,10 +213,9 @@ def run_validate(
 ) -> dict:
     """Load schema and combine config, run validation via DuckDB, write report. Returns report dict."""
     schema = load_schema(schema_path)
-    combine_config = None
-    if combine_config_path.exists():
-        with open(combine_config_path, encoding="utf-8") as f:
-            combine_config = yaml.safe_load(f)
+    combine_config = load_combine_config(combine_config_path)
+    if not combine_config:
+        combine_config = None
     if not combined_path.exists():
         raise FileNotFoundError(f"Combined file not found: {combined_path}")
     report = run_validation(combined_path, schema, combine_config)

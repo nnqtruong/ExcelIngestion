@@ -1,0 +1,87 @@
+# dataset.yaml — unified configuration (merge of split config files)
+# Consolidates: pipeline.yaml, config/schema.yaml, config/value_maps.yaml, config/combine.yaml
+# Split files remain the source of truth until Staff Engineer QA removes them.
+
+name: revenue
+environment: prod
+description: Monthly revenue data by broker/team/division
+steps:
+- 01_convert
+- 02_normalize_schema
+- 03_add_missing_columns
+- 04_clean_errors
+- 06_combine_datasets
+- 08_validate
+- 09_export_sqlite
+sqlite:
+  database: warehouse.db
+  table: revenue
+  indexes:
+  - year
+  - month
+  - broker_name
+  - division_name
+columns:
+  year:
+    dtype: int64
+    nullable: false
+  quarter:
+    dtype: string
+    nullable: false
+  acct_cur:
+    dtype: string
+    nullable: false
+  month:
+    dtype: int64
+    nullable: false
+  subdivision:
+    dtype: string
+    nullable: false
+  division_name:
+    dtype: string
+    nullable: false
+  team_name:
+    dtype: string
+    nullable: false
+  broker_name:
+    dtype: string
+    nullable: false
+  revenue:
+    dtype: float64
+    nullable: false
+  _source_file:
+    dtype: string
+    nullable: true
+  _ingested_at:
+    dtype: datetime64
+    nullable: true
+column_order:
+- year
+- quarter
+- acct_cur
+- month
+- subdivision
+- division_name
+- team_name
+- broker_name
+- revenue
+- _source_file
+- _ingested_at
+column_aliases:
+  Year: year
+  Quarter: quarter
+  AcctCur: acct_cur
+  Month: month
+  Subdivision: subdivision
+  Division Name: division_name
+  Team Name: team_name
+  Broker Name: broker_name
+  Revenue: revenue
+validation:
+  max_null_rate: 0.05
+  max_duplicate_rate: 0.1
+  min_row_count: 1
+value_maps: {}
+combine:
+  primary_key: row_id
+  output: combined.parquet

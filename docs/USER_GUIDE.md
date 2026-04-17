@@ -154,6 +154,18 @@ For unified employee dimension (HR + Genpact):
 
 - `ExcelIngestion_Data\dev\employees_master\raw`
 
+For Workday worker data:
+
+- `ExcelIngestion_Data\dev\workers\raw`
+
+For revenue data:
+
+- `ExcelIngestion_Data\dev\revenue\raw`
+
+For employee onboarding/launch tracking:
+
+- `ExcelIngestion_Data\dev\launch\raw`
+
 For production, use `ExcelIngestion_Data\prod\...` and run the pipeline with `--env prod`.
 
 **If you still have files under the old in-repo `datasets\` tree:** run `python scripts/migrate_data.py --dry-run` then `python scripts/migrate_data.py` to move them into `ExcelIngestion_Data`.
@@ -187,6 +199,21 @@ For unified employee dimension:
 python run_pipeline.py --dataset employees_master
 ```
 
+For workers (Workday HR export):
+```
+python run_pipeline.py --dataset workers
+```
+
+For revenue data:
+```
+python run_pipeline.py --dataset revenue
+```
+
+For launch/onboarding tracking:
+```
+python run_pipeline.py --dataset launch
+```
+
 For production:
 ```
 python run_pipeline.py --env prod --dataset tasks
@@ -213,7 +240,7 @@ On a new DuckDB file, **`dbt seed`** is required before **`dbt run`**. You shoul
 ### Step 4: Verify in Power BI
 
 The DuckDB file at `ExcelIngestion_Data\powerbi\dev_warehouse.duckdb` (default `DATA_ROOT`) contains:
-- Base tables: `tasks`, `employees`, `employees_master`, `workers`, `revenue`
+- Base tables: `tasks`, `employees`, `employees_master`, `workers`, `revenue`, `launch`
 - Staging views: `stg_tasks`, `stg_workers`, etc.
 - Mart tables: `mart_tasks_enriched`, `mart_team_capacity`, etc.
 
@@ -251,6 +278,9 @@ You'll see these tables:
 - `tasks` - All your task data
 - `employees` - Employee/department info (dept_mapping)
 - `employees_master` - Unified employee dimension (HR + Genpact)
+- `workers` - Workday HR worker data
+- `revenue` - Revenue by broker/team/division
+- `launch` - Employee onboarding tracking
 - `tasks_with_dept` - Tasks joined with employee info (recommended)
 
 And these pre-calculated analytics marts:
@@ -326,6 +356,31 @@ This catches schema drift early, before the pipeline spends time processing data
 
 ---
 
+## One-Command Refresh (Pipeline + dbt)
+
+Instead of running the pipeline and dbt separately, use `refresh.py` to do both in one command:
+
+```
+python refresh.py --dataset tasks
+```
+
+This runs the Python pipeline (steps 1-9) and then runs dbt to rebuild analytics marts.
+
+### Common refresh.py Commands
+
+| Task | Command |
+|------|---------|
+| Refresh single dataset (dev) | `python refresh.py --dataset tasks` |
+| Refresh all datasets (dev) | `python refresh.py --all` |
+| Refresh single dataset (prod) | `python refresh.py --env prod --dataset tasks` |
+| Skip pipeline, run dbt only | `python refresh.py --skip-pipeline --dataset tasks` |
+| Skip dbt, run pipeline only | `python refresh.py --skip-dbt --dataset tasks` |
+| Force reprocess all files | `python refresh.py --dataset tasks --force` |
+
+**Note**: You do NOT need to activate the dbt venv first—`refresh.py` automatically uses `.venv-dbt\Scripts\dbt.exe`.
+
+---
+
 ## Quick Reference
 
 | Task | Command |
@@ -336,8 +391,12 @@ This catches schema drift early, before the pipeline spends time processing data
 | Run task pipeline (prod) | `python run_pipeline.py --env prod --dataset tasks` |
 | Run employee pipeline | `python run_pipeline.py --dataset dept_mapping` |
 | Run employees_master | `python run_pipeline.py --dataset employees_master` |
+| Run workers pipeline | `python run_pipeline.py --dataset workers` |
 | Run revenue pipeline | `python run_pipeline.py --dataset revenue` |
+| Run launch pipeline | `python run_pipeline.py --dataset launch` |
 | Run all datasets | `python run_pipeline.py --all` |
+| **One-command refresh** | `python refresh.py --dataset tasks` |
+| **Refresh all + dbt** | `python refresh.py --all` |
 | Run with preflight check | `python run_pipeline.py --dataset tasks --preflight` |
 | Compare schemas | `python scripts/compare_schemas.py --dataset tasks --env dev` |
 | Check against schema.yaml | `python scripts/compare_schemas.py --dataset tasks --env dev --check-against` |
@@ -393,6 +452,9 @@ Default environment is **dev**. Paths assume default **`DATA_ROOT`** = `ExcelIng
 | Excel files (tasks) | `ExcelIngestion_Data\dev\tasks\raw\` | `ExcelIngestion_Data\prod\tasks\raw\` |
 | Excel files (employees) | `ExcelIngestion_Data\dev\dept_mapping\raw\` | `ExcelIngestion_Data\prod\dept_mapping\raw\` |
 | Excel files (employees_master) | `ExcelIngestion_Data\dev\employees_master\raw\` | `ExcelIngestion_Data\prod\employees_master\raw\` |
+| Excel files (workers) | `ExcelIngestion_Data\dev\workers\raw\` | `ExcelIngestion_Data\prod\workers\raw\` |
+| Excel files (revenue) | `ExcelIngestion_Data\dev\revenue\raw\` | `ExcelIngestion_Data\prod\revenue\raw\` |
+| Excel files (launch) | `ExcelIngestion_Data\dev\launch\raw\` | `ExcelIngestion_Data\prod\launch\raw\` |
 | Combined Parquet | `ExcelIngestion_Data\dev\{dataset}\analytics\combined.parquet` | `ExcelIngestion_Data\prod\{dataset}\analytics\combined.parquet` |
 | SQLite warehouse | `ExcelIngestion_Data\analytics\dev_warehouse.db` | `ExcelIngestion_Data\analytics\warehouse.db` |
 | Power BI DuckDB | `ExcelIngestion_Data\powerbi\dev_warehouse.duckdb` | `ExcelIngestion_Data\powerbi\warehouse.duckdb` |

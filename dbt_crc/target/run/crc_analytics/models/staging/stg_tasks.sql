@@ -3,7 +3,7 @@
   create view "dev_warehouse"."main"."stg_tasks__dbt_tmp" as (
     
 with source as (
-  select * from 'c:\Users\quang\CRC Code\ExcelIngestion_Data/dev/tasks/analytics/combined.parquet'
+  select * from 'C:\Users\quang\CRC Code\ExcelIngestion_Data/dev/tasks/analytics/combined.parquet'
 ),
 taskstatus_map as (
   select source_value, target_value from "dev_warehouse"."main"."value_map_taskstatus"

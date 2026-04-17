@@ -1,0 +1,87 @@
+# dataset.yaml — unified configuration (merge of split config files)
+# Consolidates: pipeline.yaml, config/schema.yaml, config/value_maps.yaml, config/combine.yaml
+# Split files remain the source of truth until Staff Engineer QA removes them.
+
+name: launch
+environment: dev
+description: Launch tracking data - employee onboarding by track, division, and team lead
+steps:
+- 01_convert
+- 02_normalize_schema
+- 03_add_missing_columns
+- 04_clean_errors
+- 06_combine_datasets
+- 08_validate
+- 09_export_sqlite
+sqlite:
+  database: warehouse.db
+  table: launch
+  indexes:
+  - track
+  - division
+  - subdivision
+  - team_lead
+columns:
+  name:
+    dtype: string
+    nullable: false
+  email:
+    dtype: string
+    nullable: false
+  track:
+    dtype: int64
+    nullable: false
+  division:
+    dtype: string
+    nullable: false
+  subdivision:
+    dtype: string
+    nullable: false
+  lob:
+    dtype: string
+    nullable: false
+  team_lead:
+    dtype: string
+    nullable: false
+  team_lead_email:
+    dtype: string
+    nullable: false
+  office_location:
+    dtype: string
+    nullable: false
+  _source_file:
+    dtype: string
+    nullable: true
+  _ingested_at:
+    dtype: datetime64
+    nullable: true
+column_order:
+- name
+- email
+- track
+- division
+- subdivision
+- lob
+- team_lead
+- team_lead_email
+- office_location
+- _source_file
+- _ingested_at
+column_aliases:
+  First & Last Name: name
+  Email: email
+  Track: track
+  Division: division
+  Subdivision: subdivision
+  LOB: lob
+  Team Lead: team_lead
+  Team Lead Email: team_lead_email
+  Office Location: office_location
+validation:
+  max_null_rate: 0.05
+  max_duplicate_rate: 0.1
+  min_row_count: 1
+value_maps: {}
+combine:
+  primary_key: row_id
+  output: combined.parquet

@@ -224,9 +224,11 @@ ExcelIngestion/                          # git repo (code + config templates)
 ExcelIngestion/ (continued)
 ├── docs/                              # Documentation (workflow, diagrams, SOP)
 ├── lib/                               # Reusable pipeline functions
+│   └── sql_utils.py                   # SQL escape utilities
 ├── scripts/                           # Step scripts 01–09 (thin wrappers around lib/)
 ├── tests/
-├── run_pipeline.py                    # Orchestrator
+├── run_pipeline.py                    # Orchestrator (individual steps)
+├── refresh.py                         # One-command pipeline + dbt
 └── requirements.txt
 ```
 
@@ -240,19 +242,30 @@ python -m venv .venv
 source .venv/bin/activate       # macOS/Linux
 pip install -r requirements.txt
 
-# Run the tasks dataset (default)
-python run_pipeline.py
-# Or by name:
-python run_pipeline.py --dataset tasks
+# One-command refresh: pipeline + dbt (recommended)
+python refresh.py --dataset tasks
 
-# Run the employee/department mapping dataset
-python run_pipeline.py --dataset dept_mapping
+# Or run all datasets + dbt
+python refresh.py --all
 
 # Check output (paths use default DATA_ROOT = ../ExcelIngestion_Data)
 ls ../ExcelIngestion_Data/analytics/           # dev_warehouse.db (dev) or warehouse.db (prod)
 ls ../ExcelIngestion_Data/dev/tasks/analytics/ # combined.parquet
 ls ../ExcelIngestion_Data/dev/tasks/logs/      # pipeline.log, validation_report.json
 ```
+
+### refresh.py Options
+
+```bash
+python refresh.py --dataset tasks           # Single dataset (dev)
+python refresh.py --all                      # All datasets (dev)
+python refresh.py --env prod --dataset tasks # Production
+python refresh.py --skip-pipeline            # dbt only
+python refresh.py --skip-dbt                 # Pipeline only
+python refresh.py --force                    # Reprocess all files
+```
+
+**Note**: `refresh.py` automatically uses `.venv-dbt/Scripts/dbt.exe`, so you don't need to switch venvs.
 
 ## Usage
 

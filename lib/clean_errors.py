@@ -9,6 +9,7 @@ import duckdb
 import psutil
 
 from lib.schema import columns_as_list, load_schema
+from lib.sql_utils import escape_sql_string, quote_identifier
 from lib.logging_util import monitor_step
 
 COERCE_DTYPES = {"int64", "float64", "datetime64"}
@@ -21,23 +22,27 @@ SCHEMA_DTYPE_TO_DUCKDB = {
 }
 
 
-def _escape_sql(s: str) -> str:
-    return s.replace("'", "''")
+def _pre_cast_varchar_expr(col: str, null_strings: list[str] | None) -> str:
+    """Trim to varchar, then map each null_strings literal and '' to NULL (nested NULLIF)."""
+    q = quote_identifier(col)
+    base_expr = f"TRIM(CAST({q} AS VARCHAR))"
+    if null_strings:
+        for ns in null_strings:
+            base_expr = f"NULLIF({base_expr}, '{escape_sql_string(ns)}')"
+    return f"NULLIF({base_expr}, '')"
 
 
-def _quote_id(name: str) -> str:
-    return '"' + name.replace('"', '""') + '"'
-
-
-def _cast_expr(col: str, schema_dtype: str) -> str:
+def _cast_expr(
+    col: str, schema_dtype: str, null_strings: list[str] | None = None
+) -> str:
     """Return DuckDB expression that casts column to schema type (returns NULL on failure).
 
     Empty strings are treated as NULL before casting to avoid flagging them as errors.
+    If null_strings is provided, those literal strings are also treated as NULL.
     """
-    q = _quote_id(col)
+    q = quote_identifier(col)
     norm = (schema_dtype or "string").strip().lower()
-    # For non-string types, convert empty strings to NULL first
-    nullif_expr = f"NULLIF(TRIM(CAST({q} AS VARCHAR)), '')"
+    nullif_expr = _pre_cast_varchar_expr(col, null_strings)
     if norm == "int64":
         return f"TRY_CAST({nullif_expr} AS BIGINT)"
     if norm == "float64":
@@ -46,24 +51,34 @@ def _cast_expr(col: str, schema_dtype: str) -> str:
         return f"TRY_CAST({nullif_expr} AS TIMESTAMP)"
     if norm == "bool":
         return (
-            f"CASE WHEN LOWER(TRIM(CAST({q} AS VARCHAR))) IN ('true','1','yes') THEN true "
-            f"WHEN LOWER(TRIM(CAST({q} AS VARCHAR))) IN ('false','0','no','') THEN false "
-            f"WHEN TRIM(CAST({q} AS VARCHAR)) = '' THEN NULL ELSE NULL END"
+            f"CASE WHEN LOWER({nullif_expr}) IN ('true','1','yes') THEN true "
+            f"WHEN LOWER({nullif_expr}) IN ('false','0','no') THEN false "
+            f"ELSE NULL END"
         )
     return f"CAST({q} AS VARCHAR)"
 
 
-def _good_cond(col: str, cast_expr: str) -> str:
+def _good_cond(
+    col: str, cast_expr: str, schema_dtype: str, null_strings: list[str] | None
+) -> str:
     """SQL condition: column is null/empty or cast succeeded."""
-    q = _quote_id(col)
-    # Treat empty strings as equivalent to NULL (not an error)
+    q = quote_identifier(col)
+    norm = (schema_dtype or "string").strip().lower()
+    if norm in COERCE_DTYPES or norm == "bool":
+        pre = _pre_cast_varchar_expr(col, null_strings)
+        return f"({pre} IS NULL OR ({cast_expr}) IS NOT NULL)"
     return f"({q} IS NULL OR TRIM(CAST({q} AS VARCHAR)) = '' OR ({cast_expr}) IS NOT NULL)"
 
 
-def _bad_cond(col: str, cast_expr: str) -> str:
+def _bad_cond(
+    col: str, cast_expr: str, schema_dtype: str, null_strings: list[str] | None
+) -> str:
     """SQL condition: column is not null/empty and cast failed."""
-    q = _quote_id(col)
-    # Empty strings are NOT errors - only non-empty values that fail to cast
+    q = quote_identifier(col)
+    norm = (schema_dtype or "string").strip().lower()
+    if norm in COERCE_DTYPES or norm == "bool":
+        pre = _pre_cast_varchar_expr(col, null_strings)
+        return f"({pre} IS NOT NULL AND ({cast_expr}) IS NULL)"
     return f"({q} IS NOT NULL AND TRIM(CAST({q} AS VARCHAR)) != '' AND ({cast_expr}) IS NULL)"
 
 
@@ -79,11 +94,14 @@ def process_file(
 
     conn = duckdb.connect()
     input_path = path.resolve().as_posix()
-    in_sql = _escape_sql(input_path)
+    in_sql = escape_sql_string(input_path)
 
     cur = conn.execute(f"SELECT * FROM read_parquet('{in_sql}') LIMIT 0")
     file_columns = [d[0] for d in cur.description]
     schema_cols = {c["name"]: c.get("dtype", "string") for c in columns_as_list(schema)}
+    null_strings_map = {
+        c["name"]: c.get("null_strings", []) for c in columns_as_list(schema)
+    }
     to_cast = [c for c in file_columns if c in schema_cols]
 
     if not to_cast:
@@ -98,13 +116,15 @@ def process_file(
     bad_conds = []
     for col in file_columns:
         if col in schema_cols:
-            expr = _cast_expr(col, schema_cols[col])
+            ns = null_strings_map.get(col) or None
+            dtype = schema_cols[col]
+            expr = _cast_expr(col, dtype, ns)
             cast_exprs[col] = expr
-            select_parts.append(f"{expr} AS {_quote_id(col)}")
-            good_conds.append(_good_cond(col, expr))
-            bad_conds.append(_bad_cond(col, expr))
+            select_parts.append(f"{expr} AS {quote_identifier(col)}")
+            good_conds.append(_good_cond(col, expr, dtype, ns))
+            bad_conds.append(_bad_cond(col, expr, dtype, ns))
         else:
-            select_parts.append(_quote_id(col))
+            select_parts.append(quote_identifier(col))
 
     select_sql = ", ".join(select_parts)
     good_where = " AND ".join(good_conds)
@@ -119,26 +139,26 @@ def process_file(
     # Log cast errors and first 5 bad values for coerce columns
     for col in to_cast:
         n = conn.execute(
-            f"SELECT COUNT(*) FROM read_parquet('{in_sql}') WHERE {_bad_cond(col, cast_exprs[col])}"
+            f"SELECT COUNT(*) FROM read_parquet('{in_sql}') WHERE {_bad_cond(col, cast_exprs[col], schema_cols[col], null_strings_map.get(col) or None)}"
         ).fetchone()[0]
         if n > 0:
             log.info("%s: column %s - %d cast error(s)", path.name, col, n)
             if schema_cols.get(col, "").strip().lower() in COERCE_DTYPES:
                 first_5 = conn.execute(
-                    f"SELECT {_quote_id(col)} FROM read_parquet('{in_sql}') "
-                    f"WHERE {_bad_cond(col, cast_exprs[col])} LIMIT 5"
+                    f"SELECT {quote_identifier(col)} FROM read_parquet('{in_sql}') "
+                    f"WHERE {_bad_cond(col, cast_exprs[col], schema_cols[col], null_strings_map.get(col) or None)} LIMIT 5"
                 ).fetchall()
                 vals = [row[0] for row in first_5]
                 log.info("%s: column %s - first 5 coerced-to-NaN values: %s", path.name, col, vals)
 
     error_file = errors_dir / f"{path.stem}_errors.parquet"
-    err_path_sql = _escape_sql((errors_dir / f"{path.stem}_errors.parquet").resolve().as_posix())
+    err_path_sql = escape_sql_string((errors_dir / f"{path.stem}_errors.parquet").resolve().as_posix())
 
     # Write to temp file first, then replace original (Windows file locking workaround)
     tmp_fd, tmp_path_str = tempfile.mkstemp(suffix=".parquet", dir=path.parent)
     os.close(tmp_fd)
     tmp_path = Path(tmp_path_str)
-    tmp_sql = _escape_sql(tmp_path.resolve().as_posix())
+    tmp_sql = escape_sql_string(tmp_path.resolve().as_posix())
 
     try:
         if n_error_rows == 0:

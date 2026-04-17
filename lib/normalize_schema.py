@@ -7,6 +7,7 @@ import duckdb
 import psutil
 
 from lib.schema import get_column_aliases, get_column_order, load_schema
+from lib.sql_utils import escape_sql_string, quote_identifier
 from lib.logging_util import monitor_step
 
 
@@ -17,16 +18,6 @@ def to_snake_case(name: str) -> str:
     return s.lower() if s else ""
 
 
-def _escape_sql(s: str) -> str:
-    """Escape single quotes for SQL string literal."""
-    return s.replace("'", "''")
-
-
-def _quote_id(name: str) -> str:
-    """Double-quote identifier for DuckDB."""
-    return '"' + name.replace('"', '""') + '"'
-
-
 def process_file(path: Path, schema: dict, log: logging.Logger | None = None) -> None:
     """Normalize one Parquet file via DuckDB: rename to snake_case, reorder, overwrite."""
     logger = log or logging.getLogger(__name__)
@@ -35,7 +26,7 @@ def process_file(path: Path, schema: dict, log: logging.Logger | None = None) ->
 
     conn = duckdb.connect()
     input_path = path.resolve().as_posix()
-    in_sql = _escape_sql(input_path)
+    in_sql = escape_sql_string(input_path)
 
     # Get column names from Parquet
     cur = conn.execute(f"SELECT * FROM read_parquet('{in_sql}') LIMIT 0")
@@ -71,7 +62,7 @@ def process_file(path: Path, schema: dict, log: logging.Logger | None = None) ->
         raise KeyError(final)
 
     select_parts = [
-        f'{_quote_id(_original_for_final(col))} AS {_quote_id(col)}'
+        f'{quote_identifier(_original_for_final(col))} AS {quote_identifier(col)}'
         for col in output_cols
     ]
     select_sql = ", ".join(select_parts)
@@ -80,7 +71,7 @@ def process_file(path: Path, schema: dict, log: logging.Logger | None = None) ->
         COPY (
             SELECT {select_sql}
             FROM read_parquet('{in_sql}')
-        ) TO '{_escape_sql(input_path)}' (FORMAT PARQUET)
+        ) TO '{escape_sql_string(input_path)}' (FORMAT PARQUET)
     """)
     conn.close()
 

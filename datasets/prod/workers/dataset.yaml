@@ -1,0 +1,224 @@
+# dataset.yaml — unified configuration (merge of split config files)
+# Consolidates: pipeline.yaml, config/schema.yaml, config/value_maps.yaml, config/combine.yaml
+# Split files remain the source of truth until Staff Engineer QA removes them.
+
+name: workers
+environment: prod
+description: Workday HR worker export - comprehensive employee dimension
+steps:
+- 01_convert
+- 02_normalize_schema
+- 04_clean_errors
+- 05_normalize_values
+- 08_validate
+- 09_export_sqlite
+sqlite:
+  database: warehouse.db
+  table: workers
+  indexes:
+  - employee_id
+  - current_status
+  - work_email
+columns:
+  employee_id:
+    dtype: string
+    nullable: false
+  teammate:
+    dtype: string
+    nullable: false
+  current_status:
+    dtype: string
+    nullable: false
+  country:
+    dtype: string
+    nullable: true
+  company_hierarchy:
+    dtype: string
+    nullable: true
+  company:
+    dtype: string
+    nullable: true
+  location:
+    dtype: string
+    nullable: true
+  cost_center_hierarchy:
+    dtype: string
+    nullable: true
+  cost_center:
+    dtype: string
+    nullable: true
+  operating_segment:
+    dtype: string
+    nullable: true
+  business_unit:
+    dtype: string
+    nullable: true
+  supervisory_organization:
+    dtype: string
+    nullable: true
+  job_profile:
+    dtype: string
+    nullable: true
+  business_title:
+    dtype: string
+    nullable: true
+  position:
+    dtype: string
+    nullable: true
+  management_level:
+    dtype: string
+    nullable: true
+  hire_date:
+    dtype: datetime64
+    nullable: true
+  original_hire_date:
+    dtype: datetime64
+    nullable: true
+  continuous_service_date:
+    dtype: datetime64
+    nullable: true
+  last_termination_date:
+    dtype: datetime64
+    nullable: true
+    max_null_rate: 1.0
+  scheduled_weekly_hours:
+    dtype: float64
+    nullable: true
+  fte:
+    dtype: float64
+    nullable: true
+  full_part_time:
+    dtype: string
+    nullable: true
+    max_null_rate: 0.05
+  pay_rate_type:
+    dtype: string
+    nullable: true
+    max_null_rate: 0.35
+  exempt_status:
+    dtype: string
+    nullable: true
+  worker_type:
+    dtype: string
+    nullable: true
+  worker_sub_type:
+    dtype: string
+    nullable: true
+  employee_type:
+    dtype: string
+    nullable: true
+    max_null_rate: 0.35
+  work_email:
+    dtype: string
+    nullable: true
+  direct_manager:
+    dtype: string
+    nullable: true
+  skip_level_manager:
+    dtype: string
+    nullable: true
+  executive_leader:
+    dtype: string
+    nullable: true
+  _source_file:
+    dtype: string
+    nullable: true
+  _ingested_at:
+    dtype: datetime64
+    nullable: true
+column_order:
+- employee_id
+- teammate
+- current_status
+- country
+- company_hierarchy
+- company
+- location
+- cost_center_hierarchy
+- cost_center
+- operating_segment
+- business_unit
+- supervisory_organization
+- job_profile
+- business_title
+- position
+- management_level
+- hire_date
+- original_hire_date
+- continuous_service_date
+- last_termination_date
+- scheduled_weekly_hours
+- fte
+- full_part_time
+- pay_rate_type
+- exempt_status
+- worker_type
+- worker_sub_type
+- employee_type
+- work_email
+- direct_manager
+- skip_level_manager
+- executive_leader
+- _source_file
+- _ingested_at
+column_aliases:
+  Employee ID: employee_id
+  Teammate: teammate
+  Current Status: current_status
+  Country: country
+  Company Hierarchy: company_hierarchy
+  Company: company
+  Location: location
+  Cost Center Hierarchy: cost_center_hierarchy
+  Cost Center: cost_center
+  Operating Segment: operating_segment
+  Business Unit: business_unit
+  Supervisory Organization: supervisory_organization
+  Job Profile: job_profile
+  Business Title: business_title
+  Position: position
+  Management Level: management_level
+  Hire Date: hire_date
+  Original Hire Date: original_hire_date
+  Continuous Service Date: continuous_service_date
+  Last Termination Date: last_termination_date
+  Scheduled Weekly Hours: scheduled_weekly_hours
+  FTE: fte
+  Full / Part Time: full_part_time
+  Full/Part Time: full_part_time
+  Full-Part Time: full_part_time
+  Full Part Time: full_part_time
+  FullPartTime: full_part_time
+  Time Type: full_part_time
+  Pay Rate Type: pay_rate_type
+  Exempt / Non-Exempt: exempt_status
+  Exempt/Non-Exempt: exempt_status
+  Worker Type: worker_type
+  Worker Sub-Type: worker_sub_type
+  Worker SubType: worker_sub_type
+  Employee Type: employee_type
+  Work Email: work_email
+  Direct Manager: direct_manager
+  Skip Level Manager: skip_level_manager
+  Executive Leader: executive_leader
+validation:
+  max_null_rate: 0.3
+  max_duplicate_rate: 0.01
+  min_row_count: 1
+value_maps:
+  current_status:
+    A: Active
+    L: Leave
+  full_part_time:
+    Full time: Full Time
+    Part time: Part Time
+    FULL TIME: Full Time
+    PART TIME: Part Time
+  exempt_status:
+    EXEMPT: Exempt
+    NON-EXEMPT: Non-Exempt
+    Non-exempt: Non-Exempt
+    non-exempt: Non-Exempt
+combine:
+  primary_key: row_id
+  output: combined.parquet

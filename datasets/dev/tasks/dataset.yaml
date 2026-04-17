@@ -1,0 +1,229 @@
+# dataset.yaml — unified configuration (merge of split config files)
+# Consolidates: pipeline.yaml, config/schema.yaml, config/value_maps.yaml, config/combine.yaml
+# Split files remain the source of truth until Staff Engineer QA removes them.
+
+name: tasks
+environment: dev
+sqlite:
+  database: warehouse.db
+  table: tasks
+columns:
+  task_id:
+    dtype: int64
+    nullable: false
+  file_number:
+    dtype: string
+    nullable: false
+  filename:
+    dtype: string
+    nullable: true
+  policy_number:
+    dtype: string
+    nullable: false
+  acct_exec:
+    dtype: string
+    nullable: true
+  assigned_to:
+    dtype: string
+    nullable: true
+  carrier:
+    dtype: string
+    nullable: false
+  drawer:
+    dtype: string
+    nullable: false
+  sent_to:
+    dtype: string
+    nullable: true
+  task_from:
+    dtype: string
+    nullable: true
+  task_description:
+    dtype: string
+    nullable: true
+  operation_by:
+    dtype: string
+    nullable: true
+  flow_name:
+    dtype: string
+    nullable: true
+    allowed_values:
+    - UW Renewal
+    - UW New Business
+    - Brokerage Support Processing
+  step_name:
+    dtype: string
+    nullable: true
+  effective_date:
+    dtype: datetime64
+    nullable: false
+    null_strings: ["NULL", "null", "N/A", ""]
+  date_available:
+    dtype: datetime64
+    nullable: true
+    fill_strategy: null
+    null_strings: ["NULL", "null", "N/A", "Completed", ""]
+  date_initiated:
+    dtype: datetime64
+    nullable: true
+    null_strings: ["NULL", "null", "N/A", ""]
+  date_ended:
+    dtype: datetime64
+    nullable: true
+    fill_strategy: null
+    null_strings: ["NULL", "null", "N/A", ""]
+  start_time:
+    dtype: datetime64
+    nullable: true
+    null_strings: ["NULL", "null", "N/A", ""]
+  end_time:
+    dtype: datetime64
+    nullable: true
+    fill_strategy: null
+    null_strings: ["NULL", "null", "N/A", ""]
+  task_status:
+    dtype: string
+    nullable: true
+    max_null_rate: 1.0
+    allowed_values:
+    - Completed
+    - In Progress
+    - Pending
+    - Cancelled
+  priority:
+    dtype: string
+    nullable: true
+    max_null_rate: 1.0
+  operation_time:
+    dtype: datetime64
+    nullable: true
+    max_null_rate: 1.0
+    null_strings: ["NULL", "null", "N/A", ""]
+  _source_file:
+    dtype: string
+    nullable: true
+  _ingested_at:
+    dtype: datetime64
+    nullable: true
+column_order:
+- task_id
+- file_number
+- filename
+- policy_number
+- acct_exec
+- assigned_to
+- carrier
+- drawer
+- sent_to
+- task_from
+- task_description
+- operation_by
+- flow_name
+- step_name
+- effective_date
+- date_available
+- date_initiated
+- date_ended
+- start_time
+- end_time
+- task_status
+- priority
+- operation_time
+- _source_file
+- _ingested_at
+column_aliases:
+  TaskID: task_id
+  taskid: task_id
+  Task ID: task_id
+  FileNumber: file_number
+  filenumber: file_number
+  File Number: file_number
+  FileName: filename
+  Filename: filename
+  PolicyNumber: policy_number
+  policynumber: policy_number
+  Policy Number: policy_number
+  AcctExec: acct_exec
+  acctexec: acct_exec
+  Acct Exec: acct_exec
+  AssignedTo: assigned_to
+  assignedto: assigned_to
+  Assigned To: assigned_to
+  Carrier: carrier
+  Drawer: drawer
+  SentTo: sent_to
+  sentto: sent_to
+  Sent To: sent_to
+  TaskFrom: task_from
+  taskfrom: task_from
+  Task From: task_from
+  TaskDescription: task_description
+  taskdescription: task_description
+  Task Description: task_description
+  OperationBy: operation_by
+  operationby: operation_by
+  Operation By: operation_by
+  FlowName: flow_name
+  flowname: flow_name
+  Flow Name: flow_name
+  StepName: step_name
+  stepname: step_name
+  Step Name: step_name
+  EffectiveDate: effective_date
+  effectivedate: effective_date
+  Effective Date: effective_date
+  DateAvailable: date_available
+  dateavailable: date_available
+  Date Available: date_available
+  DateInitiated: date_initiated
+  dateinitiated: date_initiated
+  Date Initiated: date_initiated
+  DateEnded: date_ended
+  dateended: date_ended
+  Date Ended: date_ended
+  StartTime: start_time
+  starttime: start_time
+  Start Time: start_time
+  EndTime: end_time
+  endtime: end_time
+  End Time: end_time
+  TaskStatus: task_status
+  taskstatus: task_status
+  Task Status: task_status
+  Priority: priority
+  OperationTime: operation_time
+  operationtime: operation_time
+  Operation Time: operation_time
+validation:
+  max_null_rate: 0.5
+  max_duplicate_rate: 0.01
+  min_row_count: 1
+value_maps:
+  taskstatus:
+    completed: Completed
+    COMPLETED: Completed
+    complete: Completed
+    in progress: In Progress
+    IN PROGRESS: In Progress
+    inprogress: In Progress
+    pending: Pending
+    PENDING: Pending
+    cancelled: Cancelled
+    CANCELLED: Cancelled
+    canceled: Cancelled
+  flowname:
+    uw renewal: UW Renewal
+    UW RENEWAL: UW Renewal
+    uw new business: UW New Business
+    UW NEW BUSINESS: UW New Business
+    brokerage support processing: Brokerage Support Processing
+  drawer:
+    SCU  Bothell: SCU Bothell
+    San Fran TC  Brkg: San Fran TC Brkg
+    SCU  Tampa: SCU Tampa
+    SCU  Chicago: SCU Chicago
+    NYC  Brkg: NYC Brkg
+    SCU  Denver: SCU Denver
+    San  Fran TC Brkg: San Fran TC Brkg
+combine:
+  output: combined.parquet

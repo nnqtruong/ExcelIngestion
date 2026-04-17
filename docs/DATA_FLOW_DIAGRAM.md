@@ -18,6 +18,8 @@ flowchart TB
         WORKERS_XLSX["👥 Workers.xlsx<br/>~4K rows"]
         EMPLOYEES_XLSX["🏢 Employees_Master.xlsx<br/>~3K rows"]
         DEPT_XLSX["🗂️ Dept_Mapping.xlsx<br/>~200 rows"]
+        REVENUE_XLSX["💰 Revenue.xlsx<br/>Revenue data"]
+        LAUNCH_XLSX["🚀 Launch.xlsx<br/>Onboarding data"]
     end
 
     subgraph STEP01["Step 01: Discover Files"]
@@ -46,6 +48,8 @@ flowchart TB
         WORKERS_PQ["ExcelIngestion_Data/.../workers/<br/>analytics/combined.parquet"]
         EMPLOYEES_PQ["ExcelIngestion_Data/.../employees_master/<br/>analytics/combined.parquet"]
         DEPT_PQ["ExcelIngestion_Data/.../dept_mapping/<br/>analytics/combined.parquet"]
+        REVENUE_PQ["ExcelIngestion_Data/.../revenue/<br/>analytics/combined.parquet"]
+        LAUNCH_PQ["ExcelIngestion_Data/.../launch/<br/>analytics/combined.parquet"]
     end
 
     subgraph STEP06["Step 06: Validate Data"]
@@ -71,6 +75,9 @@ flowchart TB
             T_TASKS["tasks<br/>4.7M rows"]
             T_WORKERS["workers<br/>~4K rows"]
             T_EMPLOYEES["employees_master<br/>~3K rows"]
+            T_DEPT["employees (dept_mapping)"]
+            T_REVENUE["revenue"]
+            T_LAUNCH["launch"]
         end
     end
 
@@ -88,6 +95,8 @@ flowchart TB
     WORKERS_XLSX --> STEP01
     EMPLOYEES_XLSX --> STEP01
     DEPT_XLSX --> STEP01
+    REVENUE_XLSX --> STEP01
+    LAUNCH_XLSX --> STEP01
 
     STEP01 --> STEP02 --> STEP03 --> STEP04 --> STEP05
 
@@ -95,6 +104,8 @@ flowchart TB
     STEP05 --> WORKERS_PQ
     STEP05 --> EMPLOYEES_PQ
     STEP05 --> DEPT_PQ
+    STEP05 --> REVENUE_PQ
+    STEP05 --> LAUNCH_PQ
 
     PARQUET_LAYER --> STEP06 --> STEP07
 
@@ -172,6 +183,9 @@ flowchart TB
             D_TASKS["tasks/raw/*.xlsx<br/>tasks/analytics/combined.parquet"]
             D_WORKERS["workers/…"]
             D_EMPLOYEES["employees_master/…"]
+            D_DEPT["dept_mapping/…"]
+            D_REVENUE["revenue/…"]
+            D_LAUNCH["launch/…"]
         end
 
         subgraph EANALYTICS["analytics/"]

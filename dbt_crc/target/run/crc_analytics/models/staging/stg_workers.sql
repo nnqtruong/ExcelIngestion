@@ -4,7 +4,7 @@
     
 
 with source as (
-  select * from 'c:\Users\quang\CRC Code\ExcelIngestion_Data/dev/workers/analytics/combined.parquet'
+  select * from 'C:\Users\quang\CRC Code\ExcelIngestion_Data/dev/workers/analytics/combined.parquet'
 ),
 
 cleaned as (

@@ -24,7 +24,19 @@
       "Bash(dir /b \"c:\\Users\\quang\\CRC Code\\ExcelIngestion\\*.md\")",
       "Bash(test:*)",
       "Bash(dir /b \"c:\\Users\\quang\\CRC Code\\ExcelIngestion_Data\\dev\")",
-      "Bash(dir /b 'c:\\Users\\quang\\CRC Code\\ExcelIngestion_Data\\dev\\tasks\\raw')"
+      "Bash(dir /b 'c:\\Users\\quang\\CRC Code\\ExcelIngestion_Data\\dev\\tasks\\raw')",
+      "Bash(tree:*)",
+      "Bash(\".venv\\Scripts\\python.exe\":*)",
+      "Bash(dir:*)",
+      "Bash(\".venv\\Scripts\\python.exe\" run_pipeline.py --all --dry-run)",
+      "Bash(\".venv\\Scripts\\python.exe\" run_pipeline.py --dataset tasks --force)",
+      "Bash(\".venv\\Scripts\\python.exe\" scripts/compare_schemas.py --dataset tasks --env dev --check-against)",
+      "Bash(\".venv\\Scripts\\python.exe\" refresh.py --help)",
+      "Bash(\".venv\\Scripts\\python.exe\" refresh.py --skip-pipeline --skip-dbt)",
+      "Bash(\".venv\\Scripts\\python.exe\" refresh.py --skip-dbt --dataset tasks)",
+      "Bash(\".venv\\Scripts\\python.exe\" -m pytest tests/ -v --tb=short)",
+      "Bash(\".venv\\Scripts\\python.exe\" -c \"\nfrom pathlib import Path\nfrom lib.config import load_dataset_config\nconfig = load_dataset_config(Path(''../ExcelIngestion_Data/dev/tasks''))\nprint(''sqlite config:'', config.get(''sqlite'', {}))\n\")",
+      "Bash(\"..\\.venv-dbt\\Scripts\\dbt.exe\" run --select mart_tasks_enriched)"
     ],
     "deny": [],
     "ask": []

@@ -6,20 +6,13 @@ import duckdb
 import psutil
 
 from lib.schema import columns_as_list, load_schema
+from lib.sql_utils import escape_sql_string, quote_identifier
 from lib.logging_util import monitor_step
-
-
-def _escape_sql(s: str) -> str:
-    return s.replace("'", "''")
-
-
-def _quote_id(name: str) -> str:
-    return '"' + name.replace('"', '""') + '"'
 
 
 def _fill_expr(col: str, strategy: str, has_row_id: bool) -> str:
     """Return DuckDB expression for fill_strategy (e.g. COALESCE(col, 0))."""
-    q = _quote_id(col)
+    q = quote_identifier(col)
     s = (strategy or "").strip().lower()
     if s == "fill_zero":
         return f"COALESCE({q}, 0)"
@@ -39,7 +32,7 @@ def process_file(path: Path, schema: dict, log: logging.Logger) -> None:
 
     conn = duckdb.connect()
     input_path = path.resolve().as_posix()
-    in_sql = _escape_sql(input_path)
+    in_sql = escape_sql_string(input_path)
 
     cur = conn.execute(f"SELECT * FROM read_parquet('{in_sql}') LIMIT 0")
     file_columns = [d[0] for d in cur.description]
@@ -69,16 +62,16 @@ def process_file(path: Path, schema: dict, log: logging.Logger) -> None:
         strategy = strategy_by_col.get(col)
         if strategy:
             expr = _fill_expr(col, strategy, has_row_id)
-            select_parts.append(f"{expr} AS {_quote_id(col)}")
+            select_parts.append(f"{expr} AS {quote_identifier(col)}")
             before_rate = conn.execute(
-                f"SELECT COUNT(*) FILTER (WHERE {_quote_id(col)} IS NULL) * 100.0 / NULLIF(COUNT(*), 0) FROM read_parquet('{in_sql}')"
+                f"SELECT COUNT(*) FILTER (WHERE {quote_identifier(col)} IS NULL) * 100.0 / NULLIF(COUNT(*), 0) FROM read_parquet('{in_sql}')"
             ).fetchone()[0] or 0.0
             log.info(
                 "%s: column %s (strategy=%s) null rate before=%.2f%%",
                 path.name, col, strategy, before_rate,
             )
         else:
-            select_parts.append(_quote_id(col))
+            select_parts.append(quote_identifier(col))
 
     select_sql = ", ".join(select_parts)
     conn.execute(f"""

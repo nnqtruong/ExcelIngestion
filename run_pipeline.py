@@ -74,29 +74,38 @@ def remove_analytics_output(dataset_root: Path, log: logging.Logger) -> None:
 
 def dry_run_validate(dataset_root: Path, log: logging.Logger) -> bool:
     """Validate configs and inputs under dataset_root. Return True if all checks pass."""
+    from lib.config import load_dataset_config
+
     config_dir = dataset_root / "config"
     raw_dir = dataset_root / "raw"
     clean_dir = dataset_root / "clean"
     ok = True
-    for name in ("schema.yaml", "combine.yaml"):
-        path = config_dir / name
-        if not path.exists():
-            log.error("Config missing: %s", path)
+    if (dataset_root / "dataset.yaml").exists():
+        try:
+            load_dataset_config(dataset_root)
+        except Exception as e:
+            log.error("Config invalid dataset.yaml: %s", e)
             ok = False
-        else:
+    else:
+        for name in ("schema.yaml", "combine.yaml"):
+            path = config_dir / name
+            if not path.exists():
+                log.error("Config missing: %s", path)
+                ok = False
+            else:
+                try:
+                    with open(path, encoding="utf-8") as f:
+                        yaml.safe_load(f)
+                except Exception as e:
+                    log.error("Config invalid %s: %s", path, e)
+                    ok = False
+        if (config_dir / "value_maps.yaml").exists():
             try:
-                with open(path, encoding="utf-8") as f:
+                with open(config_dir / "value_maps.yaml", encoding="utf-8") as f:
                     yaml.safe_load(f)
             except Exception as e:
-                log.error("Config invalid %s: %s", path, e)
+                log.error("Config invalid value_maps.yaml: %s", e)
                 ok = False
-    if (config_dir / "value_maps.yaml").exists():
-        try:
-            with open(config_dir / "value_maps.yaml", encoding="utf-8") as f:
-                yaml.safe_load(f)
-        except Exception as e:
-            log.error("Config invalid value_maps.yaml: %s", e)
-            ok = False
     if not raw_dir.is_dir():
         log.warning("raw/ not found (step 01 may need it)")
     if not clean_dir.is_dir() and not raw_dir.is_dir():

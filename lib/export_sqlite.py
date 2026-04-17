@@ -4,6 +4,7 @@ import sqlite3
 from pathlib import Path
 
 import pandas as pd
+import pyarrow.parquet as pq
 
 from lib.logging_util import monitor_step
 
@@ -76,13 +77,84 @@ def run_verification_queries(
     return results
 
 
+def export_to_sqlite_chunked(
+    parquet_path: Path,
+    db_path: Path,
+    table_name: str,
+    log: logging.Logger,
+    chunk_size: int = 100_000,
+) -> dict:
+    """Export Parquet to SQLite in chunks. Memory stays bounded by chunk size."""
+    pf = pq.ParquetFile(parquet_path)
+
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+    cursor.execute(f"DROP TABLE IF EXISTS {table_name}")
+    conn.commit()
+
+    first_chunk = True
+    total_rows = 0
+    columns: list[str] | None = None
+
+    for batch in pf.iter_batches(batch_size=chunk_size):
+        df_chunk = batch.to_pandas()
+        df_chunk = prepare_dataframe_for_sqlite(df_chunk)
+
+        if first_chunk:
+            columns = list(df_chunk.columns)
+            log.info(
+                "Starting chunked export to %s (chunk_size=%d)",
+                table_name,
+                chunk_size,
+            )
+
+        df_chunk.to_sql(
+            table_name,
+            conn,
+            if_exists="append",
+            index=False,
+        )
+
+        total_rows += len(df_chunk)
+        first_chunk = False
+
+        if total_rows % 500_000 == 0 and total_rows > 0:
+            log.info("  Written %d rows...", total_rows)
+
+    if columns is None:
+        columns = list(pf.schema_arrow.names)
+        if total_rows == 0:
+            pd.DataFrame(columns=columns).to_sql(
+                table_name, conn, if_exists="append", index=False
+            )
+
+    log.info("Wrote %d rows to %s table in %s", total_rows, table_name, db_path.name)
+
+    if columns:
+        create_indexes(conn, table_name, columns, log)
+
+    results = run_verification_queries(conn, table_name, columns or [], log)
+    conn.close()
+    return results
+
+
 def export_to_sqlite(
     parquet_path: Path,
     db_path: Path,
     table_name: str,
     log: logging.Logger,
 ) -> dict:
-    """Export Parquet to SQLite. Create-or-replace only this table; do not drop other tables."""
+    """Export Parquet to SQLite. Create-or-replace only this table; do not drop other tables.
+
+    Large Parquet files use PyArrow batched reads so the full file is not loaded at once.
+    """
+    file_size_mb = parquet_path.stat().st_size / (1024 * 1024)
+
+    if file_size_mb > 50:
+        log.info("Large file (%.1fMB), using chunked export", file_size_mb)
+        return export_to_sqlite_chunked(parquet_path, db_path, table_name, log)
+
     df = pd.read_parquet(parquet_path)
     log.info("Read %d rows from %s", len(df), parquet_path.name)
     df = prepare_dataframe_for_sqlite(df)
@@ -107,24 +179,8 @@ def run_export_sqlite(
     table_name: str,
     log: logging.Logger,
 ) -> dict:
-    """Export combined Parquet to SQLite. Returns verification results.
-
-    NOTE: Known memory issue - this step loads entire Parquet into pandas DataFrame
-    before writing to SQLite. For large datasets (6M+ rows), memory usage spikes to
-    ~2-3GB. This will be addressed in DuckDB migration (replace pandas.to_sql with
-    DuckDB's native COPY TO sqlite). Tracking issue: DuckDB migration milestone.
-    """
+    """Export combined Parquet to SQLite. Returns verification results."""
     if not combined_path.exists():
         raise FileNotFoundError(f"Combined Parquet not found: {combined_path}")
-
-    # Log memory warning for large files
-    file_size_mb = combined_path.stat().st_size / (1024 * 1024)
-    if file_size_mb > 50:  # >50MB parquet typically means 1M+ rows
-        log.warning(
-            "Memory warning: Loading %.1fMB Parquet into memory. "
-            "Large datasets may cause high memory usage. "
-            "(Known issue - will be fixed in DuckDB migration)",
-            file_size_mb,
-        )
 
     return export_to_sqlite(combined_path, db_path, table_name, log)

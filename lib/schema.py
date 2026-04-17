@@ -3,13 +3,20 @@ from pathlib import Path
 
 import yaml
 
+from lib.config import load_dataset_config, schema_body_from_merged_config
+
 
 def load_schema(path: Path) -> dict:
-    """Load and return schema from schema.yaml."""
-    if not path.exists():
-        raise FileNotFoundError(f"Schema not found: {path}")
-    with open(path, encoding="utf-8") as f:
-        data = yaml.safe_load(f)
+    """Load and return schema from schema.yaml or unified dataset.yaml."""
+    dataset_root = path.parent.parent
+    if (dataset_root / "dataset.yaml").exists():
+        merged = load_dataset_config(dataset_root)
+        data = schema_body_from_merged_config(merged)
+    else:
+        if not path.exists():
+            raise FileNotFoundError(f"Schema not found: {path}")
+        with open(path, encoding="utf-8") as f:
+            data = yaml.safe_load(f)
     if not data or "columns" not in data:
         raise ValueError(f"Schema must define 'columns': {path}")
     return data

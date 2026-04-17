@@ -6,6 +6,7 @@ import duckdb
 import psutil
 
 from lib.schema import columns_as_list, get_column_order, load_schema
+from lib.sql_utils import escape_sql_string, quote_identifier
 from lib.logging_util import monitor_step
 
 SCHEMA_DTYPE_TO_DUCKDB = {
@@ -15,14 +16,6 @@ SCHEMA_DTYPE_TO_DUCKDB = {
     "datetime64": "TIMESTAMP",
     "bool": "BOOLEAN",
 }
-
-
-def _escape_sql(s: str) -> str:
-    return s.replace("'", "''")
-
-
-def _quote_id(name: str) -> str:
-    return '"' + name.replace('"', '""') + '"'
 
 
 def _duckdb_type(schema_dtype: str) -> str:
@@ -37,7 +30,7 @@ def process_file(path: Path, schema: dict, log: logging.Logger) -> None:
 
     conn = duckdb.connect()
     input_path = path.resolve().as_posix()
-    in_sql = _escape_sql(input_path)
+    in_sql = escape_sql_string(input_path)
 
     cur = conn.execute(f"SELECT * FROM read_parquet('{in_sql}') LIMIT 0")
     file_columns = [d[0] for d in cur.description]
@@ -58,10 +51,10 @@ def process_file(path: Path, schema: dict, log: logging.Logger) -> None:
     select_parts = []
     for col in output_order:
         if col in file_columns:
-            select_parts.append(f'{_quote_id(col)}')
+            select_parts.append(f'{quote_identifier(col)}')
         else:
             dtype = _duckdb_type(next(c.get("dtype", "string") for c in schema_cols if c["name"] == col))
-            select_parts.append(f"NULL::{dtype} AS {_quote_id(col)}")
+            select_parts.append(f"NULL::{dtype} AS {quote_identifier(col)}")
 
     select_sql = ", ".join(select_parts)
     conn.execute(f"""

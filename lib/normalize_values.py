@@ -7,39 +7,19 @@ from pathlib import Path
 
 import duckdb
 import psutil
-import yaml
 
+from lib.config import load_value_maps
+from lib.sql_utils import escape_sql_string, quote_identifier
 from lib.logging_util import monitor_step
-
-
-def load_value_maps(path: Path) -> dict:
-    """Load value_maps.yaml: { column_name: { source_value: target_value } }."""
-    if not path.exists():
-        return {}
-    with open(path, encoding="utf-8") as f:
-        data = yaml.safe_load(f)
-    if data is None:
-        return {}
-    if not isinstance(data, dict):
-        raise ValueError(f"value_maps.yaml must be a dict (column -> map): {path}")
-    return data
-
-
-def _escape_sql(s: str) -> str:
-    return str(s).replace("'", "''")
-
-
-def _quote_id(name: str) -> str:
-    return '"' + name.replace('"', '""') + '"'
 
 
 def _case_expr(col: str, mapping: dict) -> str:
     """Build DuckDB CASE WHEN col = 'raw' THEN 'clean' ... ELSE col END."""
-    q = _quote_id(col)
+    q = quote_identifier(col)
     whens = []
     for raw, clean in mapping.items():
-        raw_sql = "'" + _escape_sql(raw) + "'"
-        clean_sql = "'" + _escape_sql(clean) + "'"
+        raw_sql = "'" + escape_sql_string(str(raw)) + "'"
+        clean_sql = "'" + escape_sql_string(str(clean)) + "'"
         whens.append(f"WHEN {q} = {raw_sql} THEN {clean_sql}")
     return "CASE " + " ".join(whens) + f" ELSE {q} END"
 
@@ -51,7 +31,7 @@ def process_file(path: Path, value_maps: dict, log: logging.Logger) -> None:
 
     conn = duckdb.connect()
     input_path = path.resolve().as_posix()
-    in_sql = _escape_sql(input_path)
+    in_sql = escape_sql_string(input_path)
 
     cur = conn.execute(f"SELECT * FROM read_parquet('{in_sql}') LIMIT 0")
     file_columns = [d[0] for d in cur.description]
@@ -60,9 +40,9 @@ def process_file(path: Path, value_maps: dict, log: logging.Logger) -> None:
     for col in file_columns:
         if col in value_maps and isinstance(value_maps[col], dict) and value_maps[col]:
             expr = _case_expr(col, value_maps[col])
-            select_parts.append(f"{expr} AS {_quote_id(col)}")
+            select_parts.append(f"{expr} AS {quote_identifier(col)}")
             # Count remapped (value changed and was not null)
-            orig_sql = _quote_id(col)
+            orig_sql = quote_identifier(col)
             n = conn.execute(
                 f"SELECT COUNT(*) FROM read_parquet('{in_sql}') "
                 f"WHERE {orig_sql} IS NOT NULL AND ({orig_sql} != ({expr}))"
@@ -70,7 +50,7 @@ def process_file(path: Path, value_maps: dict, log: logging.Logger) -> None:
             if n > 0:
                 log.info("%s: column %s - %d value(s) remapped", path.name, col, n)
         else:
-            select_parts.append(_quote_id(col))
+            select_parts.append(quote_identifier(col))
         if col in value_maps and not isinstance(value_maps[col], dict):
             log.warning("value_maps[%s] is not a dict, skipping", col)
 
@@ -80,7 +60,7 @@ def process_file(path: Path, value_maps: dict, log: logging.Logger) -> None:
     tmp_fd, tmp_path_str = tempfile.mkstemp(suffix=".parquet", dir=path.parent)
     os.close(tmp_fd)
     tmp_path = Path(tmp_path_str)
-    tmp_sql = _escape_sql(tmp_path.resolve().as_posix())
+    tmp_sql = escape_sql_string(tmp_path.resolve().as_posix())
 
     try:
         conn.execute(f"""

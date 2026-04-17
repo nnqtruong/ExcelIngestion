@@ -1,0 +1,105 @@
+# dataset.yaml — unified configuration (merge of split config files)
+# Consolidates: pipeline.yaml, config/schema.yaml, config/value_maps.yaml, config/combine.yaml
+# Split files remain the source of truth until Staff Engineer QA removes them.
+
+dataset: dept_mapping
+environment: prod
+description: Employee to department/team mapping from CRC HR export
+steps:
+- 01_convert
+- 02_normalize_schema
+- 04_clean_errors
+- 05_normalize_values
+- 08_validate
+- 09_export_sqlite
+sqlite:
+  database: warehouse.db
+  table: employees
+  indexes:
+  - userid
+  - email
+  - divisionid
+  - teamid
+  - division
+columns:
+  userid:
+    dtype: string
+    nullable: false
+    primary_key: true
+  id:
+    dtype: string
+    nullable: false
+  full_name:
+    dtype: string
+    nullable: false
+  title:
+    dtype: string
+    nullable: true
+    null_strings:
+    - 'NULL'
+    - 'null'
+    - N/A
+    - n/a
+    - ''
+  netwarelogin:
+    dtype: string
+    nullable: true
+  email:
+    dtype: string
+    nullable: false
+  divisionid:
+    dtype: string
+    nullable: false
+  division:
+    dtype: string
+    nullable: false
+  division1:
+    dtype: string
+    nullable: true
+  teamid:
+    dtype: string
+    nullable: false
+  team:
+    dtype: string
+    nullable: false
+  _source_file:
+    dtype: string
+    nullable: true
+  _ingested_at:
+    dtype: datetime64
+    nullable: true
+column_order:
+- userid
+- id
+- full_name
+- title
+- netwarelogin
+- email
+- divisionid
+- division
+- division1
+- teamid
+- team
+- _source_file
+- _ingested_at
+column_aliases: {}
+validation:
+  max_null_rate: 1.0
+  max_duplicate_rate: 0.0
+  min_row_count: 1
+value_maps:
+  netwarelogin:
+    crc\: CRC\
+    Crc\: CRC\
+  title:
+    'NULL': null
+    'null': null
+    N/A: null
+    n/a: null
+    associate broker: Associate Broker
+    senior broker: Senior Broker
+    inside underwriter: Inside Underwriter
+    broker: Broker
+combine:
+  primary_key: row_id
+  output: combined.parquet

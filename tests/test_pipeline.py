@@ -13,6 +13,13 @@ FIXTURES = Path(__file__).parent / "fixtures"
 DB_PATH = get_analytics_path() / "dev_warehouse.db"
 
 
+def _canonicalize_excel_columns(df, schema):
+    """Map Excel headers to schema keys using column_aliases (same idea as step 02)."""
+    aliases = schema.get("column_aliases") or {}
+    lower_to_target = {str(k).lower(): str(v) for k, v in aliases.items()}
+    return df.rename(columns=lambda c: lower_to_target.get(str(c).lower(), str(c).lower()))
+
+
 @pytest.fixture
 def schema():
     with open(CONFIG / "schema.yaml") as f:
@@ -44,12 +51,12 @@ def partial_df():
 
 class TestSchemaConfig:
     def test_schema_has_all_21_columns(self, schema):
-        # 21 task columns + _source_file, _ingested_at
-        assert len(schema["columns"]) == 23
+        # 20 core + 3 evolution + 2 pipeline-generated columns (see schema.yaml header)
+        assert len(schema["columns"]) == 25
 
     def test_schema_has_column_order(self, schema):
-        assert len(schema["column_order"]) == 23
-        assert schema["column_order"][0] == "taskid"
+        assert len(schema["column_order"]) == 25
+        assert schema["column_order"][0] == "task_id"
 
     def test_schema_columns_match_order(self, schema):
         col_keys = set(schema["columns"].keys())
@@ -58,9 +65,9 @@ class TestSchemaConfig:
 
     def test_row_id_is_primary_key(self, schema):
         # row_id is auto-generated in step 6 as the primary key, not defined in schema
-        # Just verify taskid exists and is not nullable (it's still required)
-        assert "taskid" in schema["columns"]
-        assert schema["columns"]["taskid"].get("nullable") is False
+        # Just verify task_id exists and is not nullable (it's still required)
+        assert "task_id" in schema["columns"]
+        assert schema["columns"]["task_id"].get("nullable") is False
 
     def test_validation_thresholds_exist(self, schema):
         assert "validation" in schema
@@ -77,20 +84,23 @@ class TestNormalizeSchema:
             assert col == col.lower(), f"Column not lowercase: {col}"
 
     def test_all_expected_columns_present(self, clean_df, schema):
-        renamed = clean_df.rename(columns=str.lower)
+        renamed = _canonicalize_excel_columns(clean_df, schema)
         # _source_file, _ingested_at added at combine time, not in per-file clean output
         combine_only = {"_source_file", "_ingested_at"}
         expected = set(schema["column_order"]) - combine_only
         actual = set(renamed.columns)
         missing = expected - actual
-        assert not missing, f"Missing columns: {missing}"
+        # Sample Excel predates schema-evolution columns (see schema.yaml)
+        allowed_missing = {"priority", "operation_time"}
+        unexpected = missing - allowed_missing
+        assert not unexpected, f"Missing columns: {unexpected}"
 
 
 # ---- Step 03: Add missing columns ----
 
 class TestAddMissingColumns:
     def test_partial_file_gets_missing_columns(self, partial_df, schema):
-        renamed = partial_df.rename(columns=str.lower)
+        renamed = _canonicalize_excel_columns(partial_df, schema)
         expected = set(schema["column_order"])
         actual = set(renamed.columns)
         missing = expected - actual
@@ -107,17 +117,17 @@ class TestAddMissingColumns:
 
 class TestCleanErrors:
     def test_taskid_not_nullable(self, bad_df, schema):
-        col_config = schema["columns"]["taskid"]
+        col_config = schema["columns"]["task_id"]
         assert col_config["nullable"] is False
         # bad_df has a null taskid - should be caught
-        renamed = bad_df.rename(columns=str.lower)
-        null_count = renamed["taskid"].isna().sum()
+        renamed = _canonicalize_excel_columns(bad_df, schema)
+        null_count = renamed["task_id"].isna().sum()
         assert null_count > 0, "Bad fixture should have null taskids for testing"
 
-    def test_bad_types_detected(self, bad_df):
-        renamed = bad_df.rename(columns=str.lower)
-        # taskid should be int but has None - pd will make it float
-        assert renamed["taskid"].dtype != "int64"
+    def test_bad_types_detected(self, bad_df, schema):
+        renamed = _canonicalize_excel_columns(bad_df, schema)
+        # task_id should be int but has None - pd will make it float
+        assert renamed["task_id"].dtype != "int64"
 
 
 # ---- Step 05: Normalize values ----
@@ -132,9 +142,9 @@ class TestNormalizeValues:
         assert value_maps["flowname"]["uw renewal"] == "UW Renewal"
 
     def test_bad_status_not_in_allowed(self, bad_df, schema):
-        allowed = schema["columns"]["taskstatus"]["allowed_values"]
-        renamed = bad_df.rename(columns=str.lower)
-        for val in renamed["taskstatus"].dropna():
+        allowed = schema["columns"]["task_status"]["allowed_values"]
+        renamed = _canonicalize_excel_columns(bad_df, schema)
+        for val in renamed["task_status"].dropna():
             if val not in allowed:
                 # This is expected - confirms bad fixture works
                 return
@@ -144,14 +154,14 @@ class TestNormalizeValues:
 # ---- Step 06: Combine & duplicates ----
 
 class TestCombineDatasets:
-    def test_duplicates_detected(self, bad_df):
-        renamed = bad_df.rename(columns=str.lower)
-        dupes = renamed["taskid"].dropna().duplicated().sum()
+    def test_duplicates_detected(self, bad_df, schema):
+        renamed = _canonicalize_excel_columns(bad_df, schema)
+        dupes = renamed["task_id"].dropna().duplicated().sum()
         assert dupes > 0, "Bad fixture should have duplicate taskids"
 
-    def test_clean_data_no_duplicates(self, clean_df):
-        renamed = clean_df.rename(columns=str.lower)
-        dupes = renamed["taskid"].duplicated().sum()
+    def test_clean_data_no_duplicates(self, clean_df, schema):
+        renamed = _canonicalize_excel_columns(clean_df, schema)
+        dupes = renamed["task_id"].duplicated().sum()
         assert dupes == 0
 
 
@@ -160,7 +170,7 @@ class TestCombineDatasets:
 class TestValidation:
     def test_clean_data_passes_null_threshold(self, clean_df, schema):
         max_null = schema["validation"]["max_null_rate"]
-        renamed = clean_df.rename(columns=str.lower)
+        renamed = _canonicalize_excel_columns(clean_df, schema)
         for col in renamed.columns:
             null_rate = renamed[col].isna().mean()
             assert null_rate <= max_null, f"{col} null rate {null_rate} exceeds {max_null}"
@@ -169,9 +179,10 @@ class TestValidation:
         assert len(clean_df) >= schema["validation"]["min_row_count"]
 
     def test_clean_data_column_count(self, clean_df, schema):
-        renamed = clean_df.rename(columns=str.lower)
+        renamed = _canonicalize_excel_columns(clean_df, schema)
         combine_only = {"_source_file", "_ingested_at"}
-        expected = set(schema["column_order"]) - combine_only
+        evolution_optional = {"priority", "operation_time"}
+        expected = set(schema["column_order"]) - combine_only - evolution_optional
         assert set(renamed.columns) == expected
 
 

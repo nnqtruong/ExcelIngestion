@@ -142,14 +142,20 @@ def compare_against_baseline(raw_dir: Path, baseline_name: str) -> dict[str, Any
 
 def check_against_schema(raw_dir: Path, schema_path: Path) -> dict[str, Any]:
     """Compare raw file headers against schema.yaml expectations."""
+    from lib.config import load_dataset_config, schema_body_from_merged_config
+
     files = _list_excel_files(raw_dir)
     if not files:
         return {"error": f"No Excel files found in {raw_dir}"}
-    if not schema_path.exists():
+    dataset_root = schema_path.parent.parent
+    unified = dataset_root / "dataset.yaml"
+    if unified.exists():
+        schema = schema_body_from_merged_config(load_dataset_config(dataset_root))
+    elif not schema_path.exists():
         return {"error": f"Schema file not found: {schema_path}"}
-
-    with schema_path.open(encoding="utf-8") as handle:
-        schema = yaml.safe_load(handle) or {}
+    else:
+        with schema_path.open(encoding="utf-8") as handle:
+            schema = yaml.safe_load(handle) or {}
 
     column_order = schema.get("column_order") or []
     column_aliases = schema.get("column_aliases") or {}
