@@ -248,3 +248,127 @@ models:
                 expression: ">= 0"
       - name: net_backlog_change
         description: "Opened minus completed for the day/drawer (can be negative)."
+
+  - name: fact_task_completed
+    description: "Certified task-level fact table — one row per completed ImageRight task — used for TAT, SLA, volume reporting, and forecasting."
+    columns:
+      - name: taskid
+        description: "Business key - unique task identifier."
+        tests:
+          - not_null
+          - unique
+      - name: completed_date
+        description: "Business date of completion."
+        tests:
+          - not_null
+      - name: tat_hours
+        description: "End-to-end turnaround time in hours (dateended - dateinitiated)."
+        tests:
+          - not_null
+          - dbt_utils.expression_is_true:
+              arguments:
+                expression: ">= 0"
+      - name: flowname
+        description: "Workflow name."
+      - name: final_stepname
+        description: "Last step before completion."
+
+  - name: fact_task_current
+    description: "Real-time backlog mart — one row per open ImageRight task — used for aging, bottlenecks, and capacity risk."
+    columns:
+      - name: taskid
+        description: "Business key - unique open task."
+        tests:
+          - not_null
+          - unique
+      - name: aging_hours
+        description: "Hours since task became available."
+        tests:
+          - not_null
+          - dbt_utils.expression_is_true:
+              arguments:
+                expression: ">= 0"
+      - name: as_of_date
+        description: "Snapshot date."
+        tests:
+          - not_null
+      - name: flowname
+        description: "Current workflow."
+      - name: current_stepname
+        description: "Current step in workflow."
+
+  - name: fact_task_event
+    description: "Step-level process mart — one row per unique task step event — used to identify bottlenecks, queue delays, and workflow inefficiencies."
+    columns:
+      - name: taskid
+        description: "Task identifier (not unique - tasks have multiple events)."
+        tests:
+          - not_null
+      - name: stepname
+        description: "Workflow step name."
+        tests:
+          - not_null
+      - name: event_date
+        description: "Date the event occurred."
+        tests:
+          - not_null
+      - name: queue_wait_hours
+        description: "Hours waiting in queue before work started."
+        tests:
+          - dbt_utils.expression_is_true:
+              arguments:
+                expression: ">= 0"
+              config:
+                where: "queue_wait_hours is not null"
+      - name: work_duration_hours
+        description: "Hours spent working the step."
+        tests:
+          - dbt_utils.expression_is_true:
+              arguments:
+                expression: ">= 0"
+              config:
+                where: "work_duration_hours is not null"
+
+  - name: fact_task_rework
+    description: "Completed-task rework mart — one row per completed task — measuring loopbacks and repeat step touches to quantify rework and explain TAT/effort impacts."
+    columns:
+      - name: taskid
+        description: "Business key - must exist in fact_task_completed."
+        tests:
+          - not_null
+          - unique
+          - relationships:
+              arguments:
+                to: ref('fact_task_completed')
+                field: taskid
+      - name: total_step_events
+        description: "Total deduplicated step events for this task."
+        tests:
+          - not_null
+          - dbt_utils.expression_is_true:
+              arguments:
+                expression: ">= 1"
+      - name: rework_step_events
+        description: "Count of 2nd+ occurrences of steps."
+        tests:
+          - not_null
+          - dbt_utils.expression_is_true:
+              arguments:
+                expression: ">= 0"
+      - name: rework_event_rate
+        description: "Ratio of rework events to total events (0-1)."
+        tests:
+          - not_null
+          - dbt_utils.expression_is_true:
+              arguments:
+                expression: ">= 0"
+          - dbt_utils.expression_is_true:
+              arguments:
+                expression: "<= 1"
+      - name: is_rework_task
+        description: "Flag: 1 if task has any rework, 0 otherwise."
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [0, 1]

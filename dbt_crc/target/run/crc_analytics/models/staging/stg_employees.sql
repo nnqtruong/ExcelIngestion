@@ -3,7 +3,7 @@
   create view "dev_warehouse"."main"."stg_employees__dbt_tmp" as (
     
 with source as (
-  select * from 'C:\Users\quang\CRC Code\ExcelIngestion_Data/dev/dept_mapping/analytics/combined.parquet'
+  select * from '../../ExcelIngestion_Data/dev/dept_mapping/analytics/combined.parquet'
 ),
 normalized as (
   select

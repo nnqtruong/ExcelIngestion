@@ -1,7 +1,7 @@
 
 
 with source as (
-  select * from 'C:\Users\quang\CRC Code\ExcelIngestion_Data/dev/employees_master/analytics/combined.parquet'
+  select * from '../../ExcelIngestion_Data/dev/employees_master/analytics/combined.parquet'
 ),
 
 ranked as (
