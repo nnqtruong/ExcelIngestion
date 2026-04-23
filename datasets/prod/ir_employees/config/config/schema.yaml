@@ -1,0 +1,94 @@
+# ir_employees schema - Insurance Resources employee team mapping
+# Maps employees to teams, cities, and file types with account executive flags
+columns:
+  - name: team
+    dtype: string
+    nullable: false
+  - name: teamid
+    dtype: string
+    nullable: false
+  - name: city
+    dtype: string
+    nullable: false
+  - name: user_full_name
+    dtype: string
+    nullable: false
+  - name: user_network_login
+    dtype: string
+    nullable: false
+  - name: acctexecflag
+    dtype: string
+    nullable: false
+  - name: multi_team_id
+    dtype: string
+    nullable: true
+  - name: drawer
+    dtype: string
+    nullable: false
+  - name: file_type
+    dtype: string
+    nullable: false
+  - name: _source_file
+    dtype: string
+    nullable: true
+  - name: _ingested_at
+    dtype: datetime64
+    nullable: true
+
+# Column aliases for different Excel header variations
+column_aliases:
+  "Team": "team"
+  "teamid": "teamid"
+  "TeamID": "teamid"
+  "City": "city"
+  "UserFullName": "user_full_name"
+  "User Full Name": "user_full_name"
+  "UserNetworkLogin": "user_network_login"
+  "User Network Login": "user_network_login"
+  "acctexecflag": "acctexecflag"
+  "AcctExecFlag": "acctexecflag"
+  "Account Exec Flag": "acctexecflag"
+  "MultiTeamID": "multi_team_id"
+  "Multi Team ID": "multi_team_id"
+  "Drawer": "drawer"
+  "FileType": "file_type"
+  "File Type": "file_type"
+
+# Column order for normalized output
+column_order:
+  - team
+  - teamid
+  - city
+  - user_full_name
+  - user_network_login
+  - acctexecflag
+  - multi_team_id
+  - drawer
+  - file_type
+  - _source_file
+  - _ingested_at
+
+# Validation rules
+validation:
+  required_columns:
+    - team
+    - teamid
+    - city
+    - user_full_name
+    - user_network_login
+    - acctexecflag
+    - drawer
+    - file_type
+
+  max_null_rate: 0.5
+
+  null_rate_per_column:
+    team: 0.0
+    teamid: 0.0
+    city: 0.0
+    user_full_name: 0.0
+    user_network_login: 0.0
+    acctexecflag: 0.0
+    drawer: 0.0
+    file_type: 0.0
+    multi_team_id: 0.9  # Many employees may only belong to one team

@@ -1,0 +1,17 @@
+name: ir_employees
+environment: dev
+
+sqlite:
+  database: warehouse.db
+  table: ir_employees
+
+steps:
+  - 01_convert
+  - 02_normalize_schema
+  - 03_add_missing_columns
+  - 04_clean_errors
+  - 05_normalize_values
+  - 06_combine_datasets
+  - 07_handle_nulls
+  - 08_validate
+  - 09_export_sqlite

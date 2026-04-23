@@ -275,6 +275,13 @@ flowchart TB
         subgraph WORKER_MARTS["Worker-Based Marts"]
             M_CAPACITY["mart_team_capacity<br/>Headcount by dept"]
         end
+
+        subgraph FACT_TABLES["Certified Fact Tables (Kimball)"]
+            F_COMPLETED["fact_task_completed<br/>1 row/completed task: TAT, SLA"]
+            F_CURRENT["fact_task_current<br/>1 row/open task: aging, backlog"]
+            F_EVENT["fact_task_event<br/>1 row/step event: queue wait, work time"]
+            F_REWORK["fact_task_rework<br/>1 row/completed task: rework metrics"]
+        end
     end
 
     %% Source to Staging
@@ -300,6 +307,13 @@ flowchart TB
     STG_TASKS --> M_TREND
 
     STG_WORKERS --> M_CAPACITY
+
+    %% Staging to Fact Tables
+    STG_TASKS --> F_COMPLETED
+    STG_TASKS --> F_CURRENT
+    STG_TASKS --> F_EVENT
+    F_COMPLETED --> F_REWORK
+    STG_TASKS --> F_REWORK
 ```
 
 ## dbt Execution Flow
@@ -330,7 +344,13 @@ sequenceDiagram
     dbt->>DuckDB: CREATE TABLE mart_turnaround AS ...
     dbt->>DuckDB: CREATE TABLE mart_daily_trend AS ...
 
-    dbt->>User: Completed successfully (7 models)
+    Note over dbt: Phase 4: Certified Fact Tables
+    dbt->>DuckDB: CREATE TABLE fact_task_completed AS ...
+    dbt->>DuckDB: CREATE TABLE fact_task_current AS ...
+    dbt->>DuckDB: CREATE TABLE fact_task_event AS ...
+    dbt->>DuckDB: CREATE TABLE fact_task_rework AS ...
+
+    dbt->>User: Completed successfully (11 models)
 ```
 
 ## dbt Model Details
@@ -347,6 +367,10 @@ sequenceDiagram
 | **mart_backlog** | table | stg_tasks | Open tasks aging |
 | **mart_turnaround** | table | stg_tasks | Completed task handle time |
 | **mart_daily_trend** | table | stg_tasks | Daily open/closed trend |
+| **fact_task_completed** | table | stg_tasks | Certified fact: 1 row/completed task with TAT |
+| **fact_task_current** | table | stg_tasks | Certified fact: 1 row/open task with aging |
+| **fact_task_event** | table | stg_tasks | Certified fact: 1 row/step event with timing |
+| **fact_task_rework** | table | fact_task_completed, stg_tasks | Certified fact: rework metrics for completed tasks |
 
 ## How to Run dbt
 

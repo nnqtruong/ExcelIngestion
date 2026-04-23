@@ -1,0 +1,24 @@
+# Value normalization mappings for ir_employees
+# Standardize account exec flag values
+acctexecflag:
+  "y": "Y"
+  "Y": "Y"
+  "yes": "Y"
+  "Yes": "Y"
+  "YES": "Y"
+  "n": "N"
+  "N": "N"
+  "no": "N"
+  "No": "N"
+  "NO": "N"
+
+# Standardize file type values
+file_type:
+  "brokerage": "Brokerage"
+  "BROKERAGE": "Brokerage"
+  "administration": "Administration"
+  "ADMINISTRATION": "Administration"
+  "underwriting": "Underwriting"
+  "UNDERWRITING": "Underwriting"
+  "programs": "Programs"
+  "PROGRAMS": "Programs"

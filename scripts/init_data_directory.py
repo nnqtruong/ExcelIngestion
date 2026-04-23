@@ -22,6 +22,7 @@ DATASETS = [
     "workers",
     "revenue",
     "launch",
+    "ir_employees",
 ]
 SUBDIRS = ["raw", "clean", "errors", "analytics", "logs", "_state", "config"]
 ENVS = ["dev", "prod"]

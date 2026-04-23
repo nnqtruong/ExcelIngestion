@@ -13,7 +13,7 @@ A 9-step data pipeline that converts Excel files into clean, validated Parquet d
 - Handles 500K+ row Excel files with low memory usage (chunked processing)
 - Processes 6M+ total rows across 12 files in production
 - Dev/prod environment separation
-- Multi-dataset support (tasks, dept_mapping, employees_master, workers, revenue, launch)
+- Multi-dataset support (tasks, dept_mapping, employees_master, workers, revenue, launch, ir_employees)
 - Column aliasing for multi-schema source files
 - Power BI integration via DuckDB ODBC
 - **Incremental processing** with file fingerprinting (skip unchanged files)
@@ -363,6 +363,28 @@ Default `{DATA_ROOT}` = `../ExcelIngestion_Data`. Override with env var `DATA_RO
 
 **SQLite**: Table `launch` in shared warehouse.db
 
+### 7. IR_Employees Dataset
+**Purpose**: Insurance Resources employee team mapping with multi-team assignments and account executive flags
+
+**Schema** (11 columns):
+| Column | Type | Nullable | Notes |
+|--------|------|----------|-------|
+| team | string | No | Team name (e.g., "Sales-Team Alpha") |
+| teamid | string | No | Team identifier code (e.g., "SALPHA01") |
+| city | string | No | Office city location |
+| user_full_name | string | No | Employee full name |
+| user_network_login | string | No | Network login (e.g., "CRC\JSmith") |
+| acctexecflag | string | No | Account executive flag (Y/N) |
+| multi_team_id | string | Yes | Semicolon-delimited list of team IDs for multi-team employees |
+| drawer | string | No | Office/department drawer code |
+| file_type | string | No | File type category (Brokerage, Administration, Underwriting, Programs) |
+| _source_file | string | Yes | Auto-added: source Excel filename |
+| _ingested_at | datetime64 | Yes | Auto-added: ingestion timestamp |
+
+**Key Feature**: `multi_team_id` allows employees to be assigned to multiple teams simultaneously (e.g., "SALPHA01;MKTBETA").
+
+**SQLite**: Table `ir_employees` in shared warehouse.db
+
 ---
 
 ## Configuration Files
@@ -478,6 +500,7 @@ python run_pipeline.py --dataset employees_master
 python run_pipeline.py --dataset workers
 python run_pipeline.py --dataset revenue
 python run_pipeline.py --dataset launch
+python run_pipeline.py --dataset ir_employees
 
 # Run all datasets
 python run_pipeline.py --all
@@ -564,6 +587,7 @@ pytest tests/ -v
 
 dbt is the single source of truth for analytics. Mart SQL models are defined in `dbt_crc/models/marts/` and built in DuckDB. SQLite contains only base tables; all staging views and marts live in DuckDB.
 
+### Dimension/Summary Marts
 | Mart | Description |
 |------|-------------|
 | `mart_tasks_enriched` | Tasks with Workday worker fields, employee source, duration/lifecycle metrics |
@@ -573,6 +597,14 @@ dbt is the single source of truth for analytics. Mart SQL models are defined in 
 | `mart_backlog` | Open tasks by drawer, flow, step, status with average age |
 | `mart_turnaround` | Completed-task performance: counts and avg handle/lifecycle hours |
 | `mart_daily_trend` | Daily opened vs completed by drawer with net backlog change |
+
+### Certified Fact Tables (Kimball-style)
+| Fact Table | Grain | Description |
+|------------|-------|-------------|
+| `fact_task_completed` | One row per completed taskid | TAT, SLA, volume reporting for completed tasks |
+| `fact_task_current` | One row per open taskid | Real-time backlog: aging, bottlenecks, capacity risk |
+| `fact_task_event` | One row per step event | Step-level process: queue wait, work duration, bottlenecks |
+| `fact_task_rework` | One row per completed taskid | Rework metrics: loopbacks, repeat step touches, effort impacts |
 
 ### Running dbt
 
@@ -613,6 +645,10 @@ dbt build    # Run + test
 | `mart_backlog` | Open tasks by drawer/flow/step with age |
 | `mart_turnaround` | Completed-task handle/lifecycle hours |
 | `mart_daily_trend` | Daily opened vs completed by drawer |
+| `fact_task_completed` | Certified fact: one row per completed task with TAT |
+| `fact_task_current` | Certified fact: one row per open task with aging |
+| `fact_task_event` | Certified fact: one row per step event with timing |
+| `fact_task_rework` | Certified fact: one row per completed task with rework metrics |
 
 ---
 

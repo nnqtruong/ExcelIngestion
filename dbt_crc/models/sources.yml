@@ -22,3 +22,7 @@ sources:
         description: "Unified HR + Genpact employee dimension from {DATA_ROOT}/{env}/employees_master/analytics/combined.parquet"
         meta:
           external_location: "{{ env_var('DATA_ROOT', '../../ExcelIngestion_Data') }}/{{ env_var('PIPELINE_ENV', 'dev') }}/employees_master/analytics/combined.parquet"
+      - name: ir_employees
+        description: "Insurance Resources employee team mapping from {DATA_ROOT}/{env}/ir_employees/analytics/combined.parquet"
+        meta:
+          external_location: "{{ env_var('DATA_ROOT', '../../ExcelIngestion_Data') }}/{{ env_var('PIPELINE_ENV', 'dev') }}/ir_employees/analytics/combined.parquet"
